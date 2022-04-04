@@ -10,43 +10,33 @@ import pandas as pd
 from pathlib import Path
 from typing import Optional, Union
 
+from utils import get_configuration
+
 
 LOGGER = logging.getLogger(__name__)
 
 
-class KoGPTInference():
+class GenerativeLanguageModel():
+
     def __init__(
         self,
         pretrained_model_name_or_path: Optional[Union[str, os.PathLike]],
         revision: str = "KoGPT6B-ryan1.5b-float16",
         device: str = "cuda:0",
-        total: int = 10_000, ## 1_000,
+        total: int = 100, ## 1_000,
         batch_size: int = 16,
     ):
-        ## Load a tokenizer.
-        self.tokenizer = transformers.PreTrainedTokenizerFast.from_pretrained(
-            pretrained_model_name_or_path,
-            revision=revision,
-            bos_token="[BOS]",
-            eos_token="[EOS]",
-            unk_token="[UNK]",
-            pad_token="[PAD]",
-            mask_token="[MASK]",
-        )
-        LOGGER.debug("Tokenizer loaded.")
+        ## Load weights.
+        tokenizer, model = get_configuration(pretrained_model_name_or_path, revision)
+        self.tokenizer = tokenizer
 
-        ## Load a model to GPU(s).
-        model = transformers.GPTJForCausalLM.from_pretrained(
-            pretrained_model_name_or_path,
-            revision=revision,
-            bos_token_id=self.tokenizer.bos_token_id,
-            eos_token_id=self.tokenizer.eos_token_id,
-            pad_token_id=self.tokenizer.pad_token_id,
-            torch_dtype="auto",
-            low_cpu_mem_usage=True,
-        )
+        LOGGER.debug("Tokenizer loaded.")
         LOGGER.debug("Weights loaded.")
-        LOGGER.debug(f"# params: {sum([p.numel() for p in model.parameters()]) / 10**9:.1f}B")
+        n_params = sum([p.numel() for p in model.parameters()])
+        if n_params >= 10**9:
+            LOGGER.debug(f"# params: {n_params / 10**9:.1f}B")
+        else:
+            LOGGER.debug(f"# params: {n_params / 10**6:.1f}M")
 
         ## Parallel inference.
         # n_gpus = torch.cuda.device_count()
@@ -67,7 +57,7 @@ class KoGPTInference():
         Path.mkdir(self.save_path.parent, exist_ok=True)
 
 
-    def generate(self, prompt: str = None, max_length: int = 256, min_length: int = 256) -> str:
+    def generate(self, prompt: str = None, max_length: int = 256, min_length: int = 256) -> np.ndarray:
         if prompt == None:
             prompt = self.tokenizer.bos_token
 
@@ -107,9 +97,9 @@ class KoGPTInference():
         
         # LOGGER.debug(f"Generated: {gen_text}")
         outputs = np.concatenate(outputs, axis=0)[:self.total]
-        self._save_it(outputs)
-        LOGGER.debug(f"results saved to {self.save_path}")
+        return outputs
 
     
-    def _save_it(self, outputs: np.ndarray):
-        pd.DataFrame(outputs).to_csv(self.save_path, encoding="utf-8", index=False, header=False)
+    def inference(self, texts: np.ndarray) -> tuple:
+        
+        pass

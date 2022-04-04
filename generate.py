@@ -3,7 +3,7 @@ import logging
 import pprint
 import sys
 
-from src.inference import KoGPTInference
+from src.model import GenerativeLanguageModel
 
 
 def define_argparser():
@@ -30,8 +30,8 @@ def define_argparser():
     return config
 
 
-def define_logger(config: argparse.Namespace):
-    log_format = '[%(asctime)s] [%(levelname)s] %(message)s'
+def define_logger(config: argparse.Namespace) -> None:
+    log_format = "[%(asctime)s] [%(levelname)s] %(message)s"
     level = logging.DEBUG if config.debug else logging.INFO
     logging.basicConfig(level=level, format=log_format, stream=sys.stderr)
 
@@ -45,13 +45,13 @@ def main(config):
     define_logger(config)
 
     ## Get ready.
-    model = KoGPTInference(
+    model = GenerativeLanguageModel(
         pretrained_model_name_or_path=config.model,
         revision=config.revision,
     )
 
     ## Run it.
-    model.generate()
+    texts = model.generate()
 
 
 if __name__ == "__main__":

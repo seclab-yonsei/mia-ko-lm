@@ -1,105 +1,333 @@
 import torch
 import transformers
 
-import os
 import logging
+import zlib
 
 import numpy as np
-import pandas as pd
 
-from pathlib import Path
-from typing import Optional, Union
-
-from utils import get_configuration
+from tqdm import tqdm
 
 
 LOGGER = logging.getLogger(__name__)
 
+BOS_TOKEN = "[BOS]"
+EOS_TOKEN = "[EOS]"
+UNK_TOKEN = "[UNK]"
+PAD_TOKEN = "[PAD]"
+MASK_TOKEN = "[MASK]"
+
 
 class GenerativeLanguageModel():
 
-    def __init__(
-        self,
-        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]],
-        revision: str = "KoGPT6B-ryan1.5b-float16",
-        device: str = "cuda:0",
-        total: int = 100, ## 1_000,
-        batch_size: int = 16,
-    ):
-        ## Load weights.
-        tokenizer, model = get_configuration(pretrained_model_name_or_path, revision)
-        self.tokenizer = tokenizer
+    @staticmethod
+    def get_model_and_tokenizer(pretrained_model_name_or_path: str, revision: str) -> tuple:
+        ## Get version.
+        ## We do not use "float-32" version because of out-of-memory (OOM).
+        assert pretrained_model_name_or_path == "kakaobrain/kogpt"
+        assert revision in ["KoGPT6B-ryan1.5b", "KoGPT6B-ryan1.5b-float16"]
 
-        LOGGER.debug("Tokenizer loaded.")
-        LOGGER.debug("Weights loaded.")
-        n_params = sum([p.numel() for p in model.parameters()])
-        if n_params >= 10**9:
-            LOGGER.debug(f"# params: {n_params / 10**9:.1f}B")
-        else:
-            LOGGER.debug(f"# params: {n_params / 10**6:.1f}M")
+        ## Load a tokenizer.
+        tokenizer = transformers.PreTrainedTokenizerFast.from_pretrained(
+            pretrained_model_name_or_path,
+            revision=revision,
+            bos_token=BOS_TOKEN,
+            eos_token=EOS_TOKEN,
+            unk_token=UNK_TOKEN,
+            pad_token=PAD_TOKEN,
+            mask_token=MASK_TOKEN,
+        )
+        tokenizer.padding_side = "left"
+        tokenizer.pad_tokken = tokenizer.eos_token
+        LOGGER.debug(f"Tokenizer loaded: {pretrained_model_name_or_path}, {revision}")
 
-        ## Parallel inference.
-        # n_gpus = torch.cuda.device_count()
-        # if n_gpus > 1:
-        #     model = torch.nn.DataParallel(model)
-        #     LOGGER.debug(f"{n_gpus} gpus available; using torch.nn.DataParallel.")
+        ## Load a model.
+        model = transformers.GPTJForCausalLM.from_pretrained(
+            pretrained_model_name_or_path,
+            revision=revision,
+            bos_token_id=tokenizer.bos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.pad_token_id,
+            torch_dtype="auto",
+            low_cpu_mem_usage=True,
+        )
+        ## model.config.pad_token_id = model.config.eos_token_id
+        LOGGER.debug(f"Weights loaded: {pretrained_model_name_or_path}, {revision}")
+        LOGGER.debug(f"  # params: {sum([p.numel() for p in model.parameters()]) / 10**9:.1f}B")
 
-        _ = model.eval()
-        self.model = model.to(device=device)
-        self.device = device
-
-        ## Hyperparameters.
-        self.total = total
-        self.batch_size = batch_size
-        self.iters = int(np.ceil(self.total / self.batch_size))
-
-        self.save_path = Path("assets", f"{revision}-{self.total}.csv")
-        Path.mkdir(self.save_path.parent, exist_ok=True)
+        return model, tokenizer
 
 
-    def generate(self, prompt: str = None, max_length: int = 256, min_length: int = 256) -> np.ndarray:
-        if prompt == None:
-            prompt = self.tokenizer.bos_token
+    @staticmethod
+    def calculate_perplexity(text: str, model, tokenizer) -> float:
+        ## Ref: 
+        ##  - https://github.com/ftramer/LM_Memorization
 
-        tokens = self.tokenizer.encode(prompt, return_tensors="pt")
-        LOGGER.debug(f"prompt: {prompt} (len={len(tokens)}), tokens: {tokens.shape}")
+        ## Get device of model.
+        device = next(model.parameters()).device
+
+        input_ids = torch.tensor(tokenizer.encode(text)).unsqueeze(0)
+        input_ids = input_ids.to(device)
+
+        ## Generate outputs.
+        with torch.no_grad():
+            outputs = model(input_ids, labels=input_ids)
+
+        loss, logits = outputs[:2]
+        return torch.exp(loss).cpu().detach().numpy()
+
+
+    @staticmethod
+    def calculate_zlib_entropy(text: str) -> int:
+        return len(zlib.compress(bytes(text, "utf-8")))
+
+
+    @staticmethod
+    def generate(model, tokenizer, n: int = 1_000, batch_size: int = 32, top_k: int = 40, seq_len = 256):
+        ## Assert the model be evaluate model.
+
+        ## We will accumulate the samples and scores and convert it to dataframe format.
+        samples = []
+        device = next(model.parameters()).device
 
         with torch.no_grad():
-            outputs = []
 
-            for i in range(self.iters):
-                ## Clone it.
-                batch_tokens = tokens.clone().detach().repeat(self.batch_size, 1)
-                batch_tokens = batch_tokens.to(device=self.device, non_blocking=True)
+            num_iters = int(np.ceil(n / batch_size))
+            with tqdm(total=n, desc="Generating") as pbar:
+                for i in range(num_iters):
+                    ## Encode the prompts, BOS.
+                    prompts = [BOS_TOKEN] * batch_size
+                    input_len = 1
+                    inputs = tokenizer(prompts, return_tensors="pt", padding=True)
 
-                ## Generate tokens.
-                gen_tokens = self.model.generate(
-                    batch_tokens,
-                    do_sample=True,
-                    temperature=0.8,
-                    top_k=None,
-                    top_p=0.95,
-                    bos_token_id=self.tokenizer.bos_token_id,
-                    eos_token_id=self.tokenizer.eos_token_id,
-                    pad_token_id=self.tokenizer.pad_token_id,
-                    use_cache=True,
-                    min_length=min_length + 1,
-                    max_length=max_length + 1,
-                    no_repeat_ngram_size=3,
-                ).cpu().detach().numpy()[:, 1:]
+                    output_sequences = model.generate(
+                        input_ids=inputs["input_ids"].to(device),
+                        attention_mask=inputs["attention_mask"].to(device),
+                        do_sample=True,
+                        top_k=top_k,
+                        top_p=1.0,
+                        bos_token_id=tokenizer.bos_token_id,
+                        eos_token_id=tokenizer.eos_token_id,
+                        pad_token_id=tokenizer.pad_token_id,
+                        use_cache=True,
+                        min_length=input_len + seq_len,
+                        max_length=input_len + seq_len,
+                        # no_repeat_ngram_size=3,
+                        # temperature=0.8,
+                    ).cpu().detach().numpy()
 
-                ## Decode and save it.
-                gen_text = self.tokenizer.batch_decode(gen_tokens) ## exclude bos token
-                outputs.append(gen_text)
+                    ## Decode to sentence.
+                    texts = tokenizer.batch_decode(output_sequences, skip_special_tokens=True)
 
-                if not (i % 10):
-                    LOGGER.debug(f"loop: {i+1}/{self.iters}, accumulated texts: {(i+1) * self.batch_size}")
+                    ## The last batch must be truncated.
+                    if i == num_iters - 1:
+                        texts = texts[:n-i*batch_size]
+
+                    ## Stack it.
+                    samples.extend(texts)
+
+                    ## Update progress bar.
+                    pbar.update(len(texts))
         
-        # LOGGER.debug(f"Generated: {gen_text}")
-        outputs = np.concatenate(outputs, axis=0)[:self.total]
-        return outputs
+        ## Return it.
+        return samples
+
+
+    @staticmethod
+    def evaluate(model, tokenizer, texts) -> dict:
+        ## model & tokenizer: the base model
+        ## texts: generated by model1 & tokenizer1
+        results = {
+            "base": [], ## perplexity of base model
+            "zlib": [], ## zlib entropy
+            "text": [], ## original text
+        }
+
+        for text in tqdm(texts, desc="Evaluating"):
+            ## Perplexity of original and mixed precision version.
+            ##  - original: KoGPT6B-ryan1.5b
+            ##  - mixed precision: KoGPT6B-ryan1.5b-float16
+            p = GenerativeLanguageModel.calculate_perplexity(text, model, tokenizer)
+
+            ## Zlib entropy of samples.
+            z = GenerativeLanguageModel.calculate_zlib_entropy(text)
+
+            ## Record it. 
+            results["base"].append(p)
+            results["zlib"].append(z)
+
+            results["text"].append(text)
+
+        return results
+
+
+    @staticmethod
+    def select(results: dict):
+        pass
+
+
+    @staticmethod
+    def deduplicate():
+        pass
+        
+        
+
+
+            
+
+
+
+
+
+
+
+#         with torch.no_grad():
+#             outputs = []
+
+#             for i in range(self.iters):
+#                 ## Clone it.
+#                 batch_tokens = tokens.clone().detach().repeat(self.batch_size, 1)
+#                 batch_tokens = batch_tokens.to(device=self.device, non_blocking=True)
+
+#                 ## Generate tokens.
+#                 gen_tokens = self.model.generate(
+#                     batch_tokens,
+#                     do_sample=True,
+#                     temperature=0.8,
+#                     top_k=None,
+#                     top_p=0.95,
+#                     bos_token_id=self.tokenizer.bos_token_id,
+#                     eos_token_id=self.tokenizer.eos_token_id,
+#                     pad_token_id=self.tokenizer.pad_token_id,
+#                     use_cache=True,
+#                     min_length=min_length + 1,
+#                     max_length=max_length + 1,
+#                     no_repeat_ngram_size=3,
+#                 ).cpu().detach().numpy()[:, 1:]
+
+#                 ## Decode and save it.
+#                 gen_text = self.tokenizer.batch_decode(gen_tokens) ## exclude bos token
+#                 outputs.append(gen_text)
+
+#                 if not (i % 10):
+#                     LOGGER.debug(f"loop: {i+1}/{self.iters}, accumulated texts: {(i+1) * self.batch_size}")
+
+
+
+# class GenerativeLanguageModel_():
+
+#     def __init__(
+#         self,
+#         pretrained_model_name_or_path: Optional[Union[str, os.PathLike]],
+#         revision: str = "KoGPT6B-ryan1.5b-float16",
+#         device: str = "cuda:0",
+#         total: int = 100, ## 1_000,
+#         batch_size: int = 16,
+#     ):
+#         ## Load weights.
+#         tokenizer, model = get_configuration(pretrained_model_name_or_path, revision)
+#         self.tokenizer = tokenizer
+
+#         LOGGER.debug("Tokenizer loaded.")
+#         LOGGER.debug("Weights loaded.")
+#         n_params = sum([p.numel() for p in model.parameters()])
+#         if n_params >= 10**9:
+#             LOGGER.debug(f"# params: {n_params / 10**9:.1f}B")
+#         else:
+#             LOGGER.debug(f"# params: {n_params / 10**6:.1f}M")
+
+#         ## Parallel inference.
+#         # n_gpus = torch.cuda.device_count()
+#         # if n_gpus > 1:
+#         #     model = torch.nn.DataParallel(model)
+#         #     LOGGER.debug(f"{n_gpus} gpus available; using torch.nn.DataParallel.")
+
+#         _ = model.eval()
+#         self.model = model.to(device=device)
+#         self.device = device
+
+#         ## Hyperparameters.
+#         self.total = total
+#         self.batch_size = batch_size
+#         self.iters = int(np.ceil(self.total / self.batch_size))
+
+#         self.save_path = Path("assets", f"{revision}-{self.total}.csv")
+#         Path.mkdir(self.save_path.parent, exist_ok=True)
+
+
+#     def generate(self, prompt: str = None, max_length: int = 256, min_length: int = 256) -> np.ndarray:
+#         if prompt == None:
+#             prompt = self.tokenizer.bos_token
+
+#         tokens = self.tokenizer.encode(prompt, return_tensors="pt")
+#         LOGGER.debug(f"prompt: {prompt} (len={len(tokens)}), tokens: {tokens.shape}")
+
+#         with torch.no_grad():
+#             outputs = []
+
+#             for i in range(self.iters):
+#                 ## Clone it.
+#                 batch_tokens = tokens.clone().detach().repeat(self.batch_size, 1)
+#                 batch_tokens = batch_tokens.to(device=self.device, non_blocking=True)
+
+#                 ## Generate tokens.
+#                 gen_tokens = self.model.generate(
+#                     batch_tokens,
+#                     do_sample=True,
+#                     temperature=0.8,
+#                     top_k=None,
+#                     top_p=0.95,
+#                     bos_token_id=self.tokenizer.bos_token_id,
+#                     eos_token_id=self.tokenizer.eos_token_id,
+#                     pad_token_id=self.tokenizer.pad_token_id,
+#                     use_cache=True,
+#                     min_length=min_length + 1,
+#                     max_length=max_length + 1,
+#                     no_repeat_ngram_size=3,
+#                 ).cpu().detach().numpy()[:, 1:]
+
+#                 ## Decode and save it.
+#                 gen_text = self.tokenizer.batch_decode(gen_tokens) ## exclude bos token
+#                 outputs.append(gen_text)
+
+#                 if not (i % 10):
+#                     LOGGER.debug(f"loop: {i+1}/{self.iters}, accumulated texts: {(i+1) * self.batch_size}")
+        
+#         # LOGGER.debug(f"Generated: {gen_text}")
+#         outputs = np.concatenate(outputs, axis=0)[:self.total]
+#         return outputs
 
     
-    def inference(self, texts: np.ndarray) -> tuple:
-        
-        pass
+#     def inference(self, texts: np.ndarray) -> tuple:
+#         # import torch
+#         # import copy
+#         # from tqdm import tqdm
+
+#         # device = "cuda"
+#         # model = inference.model.to(device)
+#         # tokenizer = inference.tokenizer
+
+#         # test = copy.deepcopy(foo)
+#         # encodings = tokenizer(test[1], return_tensors="pt")
+
+#         # max_length = model.config.n_positions
+#         # stride = 512
+
+#         # nlls = []
+#         # for i in tqdm(range(0, encodings.input_ids.size(1), stride)):
+#         #     begin_loc = max(i + stride - max_length, 0)
+#         #     end_loc = min(i + stride, encodings.input_ids.size(1))
+#         #     trg_len = end_loc - i  # may be different from stride on last loop
+#         #     input_ids = encodings.input_ids[:, begin_loc:end_loc].to(device)
+#         #     target_ids = input_ids.clone()
+#         #     target_ids[:, :-trg_len] = -100
+
+#         #     with torch.no_grad():
+#         #         outputs = model(input_ids, labels=target_ids)
+#         #         neg_log_likelihood = outputs[0] * trg_len
+
+#         #     nlls.append(neg_log_likelihood)
+
+#         # ppl = torch.exp(torch.stack(nlls).sum() / end_loc)
+#         # ppl
+#         pass

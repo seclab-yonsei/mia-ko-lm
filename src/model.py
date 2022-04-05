@@ -7,6 +7,7 @@ import zlib
 import numpy as np
 
 from tqdm import tqdm
+from typing import List
 
 
 LOGGER = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ class GenerativeLanguageModel():
             mask_token=MASK_TOKEN,
         )
         tokenizer.padding_side = "left"
-        tokenizer.pad_tokken = tokenizer.eos_token
+        tokenizer.pad_token = tokenizer.eos_token
         LOGGER.debug(f"Tokenizer loaded: {pretrained_model_name_or_path}, {revision}")
 
         ## Load a model.
@@ -83,7 +84,7 @@ class GenerativeLanguageModel():
 
 
     @staticmethod
-    def generate(model, tokenizer, n: int = 1_000, batch_size: int = 32, top_k: int = 40, seq_len = 256):
+    def generate(model, tokenizer, n: int = 1_000, batch_size: int = 32, top_k: int = 40, seq_len = 256) -> List[np.ndarray]:
         ## Assert the model be evaluate model.
 
         ## We will accumulate the samples and scores and convert it to dataframe format.
@@ -112,8 +113,8 @@ class GenerativeLanguageModel():
                         use_cache=True,
                         min_length=input_len + seq_len,
                         max_length=input_len + seq_len,
-                        # no_repeat_ngram_size=3,
-                        # temperature=0.8,
+                        temperature=0.8,
+                        no_repeat_ngram_size=3,
                     ).cpu().detach().numpy()
 
                     ## Decode to sentence.
@@ -161,173 +162,13 @@ class GenerativeLanguageModel():
         return results
 
 
-    @staticmethod
-    def select(results: dict):
-        pass
+    # @staticmethod
+    # def select(metric: np.ndarray, texts: List[str], k: int = 1_000) -> List[str]:
+    #     ## Select top-k candidates (e.g., 1000).
+    #     idxs = np.argsort(metric)[::-1][:k]
+    #     return [i for i in texts[idxs]]
 
 
-    @staticmethod
-    def deduplicate():
-        pass
-        
-        
-
-
-            
-
-
-
-
-
-
-
-#         with torch.no_grad():
-#             outputs = []
-
-#             for i in range(self.iters):
-#                 ## Clone it.
-#                 batch_tokens = tokens.clone().detach().repeat(self.batch_size, 1)
-#                 batch_tokens = batch_tokens.to(device=self.device, non_blocking=True)
-
-#                 ## Generate tokens.
-#                 gen_tokens = self.model.generate(
-#                     batch_tokens,
-#                     do_sample=True,
-#                     temperature=0.8,
-#                     top_k=None,
-#                     top_p=0.95,
-#                     bos_token_id=self.tokenizer.bos_token_id,
-#                     eos_token_id=self.tokenizer.eos_token_id,
-#                     pad_token_id=self.tokenizer.pad_token_id,
-#                     use_cache=True,
-#                     min_length=min_length + 1,
-#                     max_length=max_length + 1,
-#                     no_repeat_ngram_size=3,
-#                 ).cpu().detach().numpy()[:, 1:]
-
-#                 ## Decode and save it.
-#                 gen_text = self.tokenizer.batch_decode(gen_tokens) ## exclude bos token
-#                 outputs.append(gen_text)
-
-#                 if not (i % 10):
-#                     LOGGER.debug(f"loop: {i+1}/{self.iters}, accumulated texts: {(i+1) * self.batch_size}")
-
-
-
-# class GenerativeLanguageModel_():
-
-#     def __init__(
-#         self,
-#         pretrained_model_name_or_path: Optional[Union[str, os.PathLike]],
-#         revision: str = "KoGPT6B-ryan1.5b-float16",
-#         device: str = "cuda:0",
-#         total: int = 100, ## 1_000,
-#         batch_size: int = 16,
-#     ):
-#         ## Load weights.
-#         tokenizer, model = get_configuration(pretrained_model_name_or_path, revision)
-#         self.tokenizer = tokenizer
-
-#         LOGGER.debug("Tokenizer loaded.")
-#         LOGGER.debug("Weights loaded.")
-#         n_params = sum([p.numel() for p in model.parameters()])
-#         if n_params >= 10**9:
-#             LOGGER.debug(f"# params: {n_params / 10**9:.1f}B")
-#         else:
-#             LOGGER.debug(f"# params: {n_params / 10**6:.1f}M")
-
-#         ## Parallel inference.
-#         # n_gpus = torch.cuda.device_count()
-#         # if n_gpus > 1:
-#         #     model = torch.nn.DataParallel(model)
-#         #     LOGGER.debug(f"{n_gpus} gpus available; using torch.nn.DataParallel.")
-
-#         _ = model.eval()
-#         self.model = model.to(device=device)
-#         self.device = device
-
-#         ## Hyperparameters.
-#         self.total = total
-#         self.batch_size = batch_size
-#         self.iters = int(np.ceil(self.total / self.batch_size))
-
-#         self.save_path = Path("assets", f"{revision}-{self.total}.csv")
-#         Path.mkdir(self.save_path.parent, exist_ok=True)
-
-
-#     def generate(self, prompt: str = None, max_length: int = 256, min_length: int = 256) -> np.ndarray:
-#         if prompt == None:
-#             prompt = self.tokenizer.bos_token
-
-#         tokens = self.tokenizer.encode(prompt, return_tensors="pt")
-#         LOGGER.debug(f"prompt: {prompt} (len={len(tokens)}), tokens: {tokens.shape}")
-
-#         with torch.no_grad():
-#             outputs = []
-
-#             for i in range(self.iters):
-#                 ## Clone it.
-#                 batch_tokens = tokens.clone().detach().repeat(self.batch_size, 1)
-#                 batch_tokens = batch_tokens.to(device=self.device, non_blocking=True)
-
-#                 ## Generate tokens.
-#                 gen_tokens = self.model.generate(
-#                     batch_tokens,
-#                     do_sample=True,
-#                     temperature=0.8,
-#                     top_k=None,
-#                     top_p=0.95,
-#                     bos_token_id=self.tokenizer.bos_token_id,
-#                     eos_token_id=self.tokenizer.eos_token_id,
-#                     pad_token_id=self.tokenizer.pad_token_id,
-#                     use_cache=True,
-#                     min_length=min_length + 1,
-#                     max_length=max_length + 1,
-#                     no_repeat_ngram_size=3,
-#                 ).cpu().detach().numpy()[:, 1:]
-
-#                 ## Decode and save it.
-#                 gen_text = self.tokenizer.batch_decode(gen_tokens) ## exclude bos token
-#                 outputs.append(gen_text)
-
-#                 if not (i % 10):
-#                     LOGGER.debug(f"loop: {i+1}/{self.iters}, accumulated texts: {(i+1) * self.batch_size}")
-        
-#         # LOGGER.debug(f"Generated: {gen_text}")
-#         outputs = np.concatenate(outputs, axis=0)[:self.total]
-#         return outputs
-
-    
-#     def inference(self, texts: np.ndarray) -> tuple:
-#         # import torch
-#         # import copy
-#         # from tqdm import tqdm
-
-#         # device = "cuda"
-#         # model = inference.model.to(device)
-#         # tokenizer = inference.tokenizer
-
-#         # test = copy.deepcopy(foo)
-#         # encodings = tokenizer(test[1], return_tensors="pt")
-
-#         # max_length = model.config.n_positions
-#         # stride = 512
-
-#         # nlls = []
-#         # for i in tqdm(range(0, encodings.input_ids.size(1), stride)):
-#         #     begin_loc = max(i + stride - max_length, 0)
-#         #     end_loc = min(i + stride, encodings.input_ids.size(1))
-#         #     trg_len = end_loc - i  # may be different from stride on last loop
-#         #     input_ids = encodings.input_ids[:, begin_loc:end_loc].to(device)
-#         #     target_ids = input_ids.clone()
-#         #     target_ids[:, :-trg_len] = -100
-
-#         #     with torch.no_grad():
-#         #         outputs = model(input_ids, labels=target_ids)
-#         #         neg_log_likelihood = outputs[0] * trg_len
-
-#         #     nlls.append(neg_log_likelihood)
-
-#         # ppl = torch.exp(torch.stack(nlls).sum() / end_loc)
-#         # ppl
-#         pass
+    # @staticmethod
+    # def deduplicate(metrics: List[np.ndarray], texts: List[List[str]], tokenizer) -> List[List[str]]:
+    #     pass

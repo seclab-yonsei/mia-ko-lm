@@ -81,8 +81,9 @@ class GenerativeLanguageModel():
 
 
     @staticmethod
-    def calculate_zlib_entropy(text: str) -> int:
+    def calculate_zlib_entropy_ratio(text: str) -> int:
         return len(zlib.compress(bytes(text, "utf-8")))
+        # return len(zlib.compress(bytes(text, "utf-8"))) / len(bytes(text, "utf-8"))
 
 
     @staticmethod
@@ -109,12 +110,12 @@ class GenerativeLanguageModel():
                         input_ids=inputs["input_ids"].to(device),
                         attention_mask=inputs["attention_mask"].to(device),
                         do_sample=True,
-                        top_k=top_k,
-                        top_p=1.0,
+                        # top_k=0,
+                        top_p=0.95,
                         use_cache=True,
-                        # min_length=input_len + seq_len,
+                        min_length=input_len + seq_len,
                         max_length=input_len + seq_len,
-                        # temperature=2,
+                        # temperature=1.2,
                         repetition_penalty=2.0, ## block the non-interesting sentences
                         no_repeat_ngram_size=3, ## trigram blocking
                     ).cpu().detach().numpy()
@@ -153,7 +154,7 @@ class GenerativeLanguageModel():
             p = GenerativeLanguageModel.calculate_perplexity(text, model, tokenizer)
 
             ## Zlib entropy of samples.
-            z = GenerativeLanguageModel.calculate_zlib_entropy(text)
+            z = GenerativeLanguageModel.calculate_zlib_entropy_ratio(text)
 
             ## Record it. 
             results["base"].append(p)

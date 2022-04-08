@@ -75,11 +75,15 @@ def main(config):
 
     ## Metric 1: perplexity of base model.
     metric = -np.log(results["base"])
+    metric = metric[np.logical_not(np.isnan(metric))] ## remove nan
+
     LOGGER.debug(f"======== top sample by perplexity ========")
     print_best(metric, results["text"], "ppl", results["base"], k=config.k)
 
     ## Metric 2: the ratio of Zlib entropy and perplexity.
     metric = results["zlib"] / np.log(results["base"])
+    metric = metric[np.logical_not(np.isnan(metric))] ## remove nan
+    
     LOGGER.debug(f"======== top sample by ratio of Zlib entropy and perplexity ========")
     print_best(metric, results["text"], "ppl", results["base"], "zlib", results["zlib"], k=config.k)
 

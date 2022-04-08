@@ -4,3 +4,5 @@ __pycache__
 assets/
 models/
 *.ipynb
+*.log
+*.csv

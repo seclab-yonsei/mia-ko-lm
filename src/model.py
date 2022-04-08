@@ -2,6 +2,7 @@ import torch
 import transformers
 
 import logging
+import os
 import zlib
 
 import numpy as np
@@ -9,6 +10,8 @@ import numpy as np
 from tqdm import tqdm
 from typing import List
 
+
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 LOGGER = logging.getLogger(__name__)
 
@@ -46,9 +49,8 @@ class GenerativeLanguageModel():
         model = transformers.GPTJForCausalLM.from_pretrained(
             pretrained_model_name_or_path,
             revision=revision,
-            bos_token_id=tokenizer.bos_token_id,
-            eos_token_id=tokenizer.eos_token_id,
-            pad_token_id=tokenizer.pad_token_id,
+            ## Setting `pad_token_id` to `eos_token_id`:3 for open-end generation.
+            pad_token_id=tokenizer.eos_token_id,
             torch_dtype="auto",
             low_cpu_mem_usage=True,
         )
@@ -101,20 +103,20 @@ class GenerativeLanguageModel():
                     input_len = 1
                     inputs = tokenizer(prompts, return_tensors="pt", padding=True)
 
+                    ## See the documents for understanding other arguments:
+                    ##  - https://huggingface.co/docs/transformers/main/en/main_classes/text_generation#transformers.generation_utils.GenerationMixin.generate
                     output_sequences = model.generate(
                         input_ids=inputs["input_ids"].to(device),
                         attention_mask=inputs["attention_mask"].to(device),
                         do_sample=True,
                         top_k=top_k,
                         top_p=1.0,
-                        bos_token_id=tokenizer.bos_token_id,
-                        eos_token_id=tokenizer.eos_token_id,
-                        pad_token_id=tokenizer.pad_token_id,
                         use_cache=True,
-                        min_length=input_len + seq_len,
+                        # min_length=input_len + seq_len,
                         max_length=input_len + seq_len,
-                        temperature=0.8,
-                        no_repeat_ngram_size=3,
+                        # temperature=2,
+                        repetition_penalty=2.0, ## block the non-interesting sentences
+                        no_repeat_ngram_size=3, ## trigram blocking
                     ).cpu().detach().numpy()
 
                     ## Decode to sentence.

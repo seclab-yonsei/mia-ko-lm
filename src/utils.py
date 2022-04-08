@@ -16,11 +16,9 @@ def print_best(metric, samples, name1: str, scores1, name2: str = None, scores2:
     ## Print it.
     for i, idx in enumerate(idxs):
         if scores2 != None:
-            LOGGER.debug(f"{i+1}: {name1}={scores1[idx]:.3f}, {name2}={scores2[idx]:.3f}, score={metric[idx]:.3f}")
+            LOGGER.debug(f"{i+1}: {name1}={scores1[idx]:.3f}, {name2}={scores2[idx]:.3f}, score={metric[idx]:.3f}, text={samples[idx]}")
         else:
-            LOGGER.debug(f"{i+1}: {name1}={scores1[idx]:.3f}, score={metric[idx]:.3f}")
-
-        LOGGER.debug(samples[idx])
+            LOGGER.debug(f"{i+1}: {name1}={scores1[idx]:.3f}, score={metric[idx]:.3f}, text={samples[idx]}")
 
 
 def save_it(results: dict, save_path: str) -> None:

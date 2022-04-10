@@ -3,11 +3,9 @@ import transformers
 
 import argparse
 import datetime
-import difflib
 import logging
 import pprint
 import tqdm
-import sys
 import zlib
 
 import numpy as np
@@ -25,66 +23,127 @@ def define_argparser():
     p.add_argument(
         "--n",
         type=int,
-        default=1_000,
+        default=10_000,
+        help=" ".join([
+            "The number of texts you want to sample.",
+            "Default=%(default)s",
+        ]),
     )
     p.add_argument(
         "--k",
         type=int,
-        default=10,
+        default=100,
+        help=" ".join([
+            "The number of texts you want to screen out of the sampled texts.",
+            "Similar sentences are automatically removed. It is marked as TRUE",
+            "in the top_k column of the resulting file.",
+            "Default=%(default)s",
+        ]),
     )
     p.add_argument(
         "--batch_size",
         type=int,
         default=24,
+        help=" ".join([
+            "The number of sentences to generate at once. It depends on the",
+            "maximum VRAM size of the GPU. It is actually implemented as the",
+            "argument num_return_sequences of the method generate; The number",
+            "of independently computed returned sequences for each element in",
+            "the batch. For a detailed explanation, please see:",
+            "https://huggingface.co/docs/transformers/main_classes/model#transformers.generation_utils.GenerationMixin.generate",
+            "Default=%(default)s",
+        ]),
     )
     p.add_argument(
         "--temperature",
         type=float,
         default=0.8,
+        help=" ".join([
+            "The value used to module the next token probabilities.",
+            "Default=%(default)s",
+        ]),
     )
     p.add_argument(
         "--repetition_penalty",
         type=float,
-        default=1.2,
+        default=1.0,
+        help=" ".join([
+            "The parameter for repetition penalty. 1.0 means no penalty.",
+            "Default=%(default)s",
+        ]),
     )
     p.add_argument(
         "--min_length",
         type=int,
         default=256,
+        help=" ".join([
+            "The minimum length of the sequence to be generated.",
+            "Default=%(default)s",
+        ]),
     )
     p.add_argument(
         "--max_length",
         type=int,
         default=256,
+        help=" ".join([
+            "The maximum length of the sequence to be generated.",
+            "Default=%(default)s",
+        ]),
     )
     p.add_argument(
         "--device",
         type=str,
         default="cuda:0",
+        help=" ".join([
+            "The device on which the model will be loaded.",
+            "Default=%(default)s",
+        ]),
     )
     p.add_argument(
         "--pretrained_model_name",
         type=str,
         default="kakaobrain/kogpt",
+        help=" ".join([
+            "The pretrained model to use.",
+            "Default=%(default)s",
+        ]),
     )
     p.add_argument(
         "--revision",
         type=str,
         default="KoGPT6B-ryan1.5b-float16",
+        help=" ".join([
+            "The version of the pretrained model to use.",
+            "Default=%(default)s",
+        ]),
     )
     p.add_argument(
         "--assets",
         type=str,
         default="assets",
+        help=" ".join([
+            "The folder where the output result file (*.csv) will be saved.",
+            "The file name is saved as '{revision}-{nowtime}-{n}.csv' by default.",
+            "Default=%(default)s",
+        ]),
     )
     p.add_argument(
         "--logs",
         type=str,
         default="logs",
+        help=" ".join([
+            "The folder where the log files will be saved. The default",
+            "name of the log is specified in the format '{nowtime}.log'.",
+            "Default=%(default)s",
+        ]),
     )
     p.add_argument(
         "-d", "--debug", 
         action="store_false", ## default: True
+        help=" ".join([
+            "Specifies the debugging mode.",
+            "Default=%(default)s",
+        ]),
     )
 
     config = p.parse_args()
@@ -153,25 +212,35 @@ def main(config):
     ## Now, generate a lot of texts.
     num_iters = int(np.ceil(config.n / config.batch_size))
     texts = []
-    for _ in tqdm.tqdm(range(num_iters), desc="Generating"):
-        with torch.no_grad():
-            ## [0, 1] == [bos_token_id, eos_token_id]
-            tokens = torch.tensor([[0, 1]])[:, 1:].to(device=config.device, non_blocking=True)
+    with tqdm.tqdm(total=config.n, desc="Generating Texts") as pbar:
+        for i in range(num_iters):
+            with torch.no_grad():
+                ## [0, 1] == [bos_token_id, eos_token_id]
+                prompt_len = 1
+                tokens = torch.tensor([[0, 1]])[:, 1:].to(device=config.device, non_blocking=True)
 
-            ## Generate texts from tokens.
-            gen_tokens = model.generate(
-                tokens, 
-                do_sample=True, 
-                temperature=config.temperature,                 ## 0.8
-                # repetition_penalty=config.repetition_penalty,   ## 1.2 -> hence we are using zlib entropy metric, this is no meaning                min_length=config.min_length + 1,       ## + length of bos token
-                max_length=config.max_length + 1,       ## + length of bos token
-                num_return_sequences=config.batch_size, ## actually, it is not really same as the meaning of batchSize...
-            )
+                ## Generate texts from tokens.
+                gen_tokens = model.generate(
+                    tokens, 
+                    do_sample=True, 
+                    temperature=config.temperature,                 ## 0.8
+                    repetition_penalty=config.repetition_penalty,   ## 1.2 -> hence we are using zlib entropy metric, this is no meaning
+                    min_length=config.min_length + prompt_len,
+                    max_length=config.max_length + prompt_len,
+                    num_return_sequences=config.batch_size,         ## actually, it is not really same as the meaning of batchSize...
+                )
 
-            ## Don't forget detaching from gpu into cpu.
-            generated = tokenizer.batch_decode(gen_tokens.cpu().numpy(), skip_special_tokens=True)
-            texts.extend(generated)
-    
+                ## Don't forget detaching from gpu into cpu.
+                generated = tokenizer.batch_decode(gen_tokens.cpu().numpy(), skip_special_tokens=True)
+                if i == num_iters - 1:
+                    generated = generated[:config.n - i*config.batch_size]
+
+                texts.extend(generated)
+            
+            ## Update progressbar.
+            pbar.update(len(generated))
+            
+        
     ## Drop remainers..
     texts = texts[:config.n]
     LOGGER.debug(f"{len(texts)} texts generated.")
@@ -206,10 +275,11 @@ def main(config):
     ## Select and mark top-k.
     top_k_text = []
     top_k_idx = []
-    for idx, row in df.iterrows():
-        if any([calculate_is_similar(row["text"], text) for text in texts]):
-            top_k_text.append(row["text"])
-            top_k_idx.append(idx)
+    for idx, row in tqdm.tqdm(df.iterrows(), desc="Deduplicating"):
+        ## Big O complexity: O(n(n-1)/2) where n is k.
+        if all([not calculate_is_similar(row["text"], text) for text in top_k_text]):
+            top_k_text.append(row["text"])  ## save for comparison
+            top_k_idx.append(idx)           ## save for marking
         
         if len(top_k_text) >= config.k:
             break

@@ -6,3 +6,4 @@ models/
 *.ipynb
 *.log
 *.csv
+logs/

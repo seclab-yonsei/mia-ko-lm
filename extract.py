@@ -1,13 +1,19 @@
+import torch
+import transformers
+
 import argparse
 import datetime
+import difflib
 import logging
 import pprint
+import tqdm
 import sys
+import zlib
 
 import numpy as np
+import pandas as pd
 
-from src.model import GenerativeLanguageModel
-from src.utils import print_best, save_it
+from pathlib import Path
 
 
 LOGGER = logging.getLogger(__name__)
@@ -29,7 +35,52 @@ def define_argparser():
     p.add_argument(
         "--batch_size",
         type=int,
-        default=16,
+        default=24,
+    )
+    p.add_argument(
+        "--temperature",
+        type=float,
+        default=0.8,
+    )
+    p.add_argument(
+        "--repetition_penalty",
+        type=float,
+        default=1.2,
+    )
+    p.add_argument(
+        "--min_length",
+        type=int,
+        default=256,
+    )
+    p.add_argument(
+        "--max_length",
+        type=int,
+        default=256,
+    )
+    p.add_argument(
+        "--device",
+        type=str,
+        default="cuda:0",
+    )
+    p.add_argument(
+        "--pretrained_model_name",
+        type=str,
+        default="kakaobrain/kogpt",
+    )
+    p.add_argument(
+        "--revision",
+        type=str,
+        default="KoGPT6B-ryan1.5b-float16",
+    )
+    p.add_argument(
+        "--assets",
+        type=str,
+        default="assets",
+    )
+    p.add_argument(
+        "--logs",
+        type=str,
+        default="logs",
     )
     p.add_argument(
         "-d", "--debug", 
@@ -40,12 +91,27 @@ def define_argparser():
     return config
 
 
-def define_logger(config: argparse.Namespace) -> None:
+def define_logger(config: argparse.Namespace, save_path: str) -> None:
     log_format = "[%(asctime)s] [%(levelname)s] %(message)s"
     level = logging.DEBUG if config.debug else logging.INFO
 
-    logging.basicConfig(level=level, format=log_format, stream=sys.stderr)
-    # logging.basicConfig(level=level, format=log_format, filename="log.log", filemode="w")
+    ## Save log.
+    logging.basicConfig(level=level, format=log_format, filename=save_path, filemode="w")
+    LOGGER.debug(f"Log will save into {save_path}")
+
+
+def calculate_zlib_entropy(sentence: str) -> int:
+    return len(zlib.compress(bytes(sentence, "utf-8")))
+
+
+def calculate_is_similar(str1: str, str2: str, n_gram: int = 3) -> bool:
+    ## Calculate trigram similarity: str1 (reference) vs str2 (hyphothesis).
+    ## It is same as "Is string 1 is similar to string 2?"
+    n_gram_set = lambda x: set([x[i::n_gram] for i in range(len(x)-n_gram)])
+
+    ## Return true if str1 is similar (or duplicated) to str2 else false.
+    ## It is not recommended to mark two strings as similar, trivially.
+    return len(n_gram_set(str1) & n_gram_set(str2)) >= len(n_gram_set(str1)) / 2
 
 
 def main(config):
@@ -54,42 +120,109 @@ def main(config):
     print_config(config)
 
     ## Set logger.
-    define_logger(config)
+    Path(config.logs).mkdir(exist_ok=True)
+    nowtime = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    define_logger(config, save_path=f"{config.logs}/{nowtime}.log")
 
-    ## Get model.
-    model, tokenizer = GenerativeLanguageModel.get_model_and_tokenizer("kakaobrain/kogpt", "KoGPT6B-ryan1.5b-float16")
+    ## Get tokenizer and model.
+    ## See: https://github.com/kakaobrain/kogpt
+    tokenizer = transformers.AutoTokenizer.from_pretrained(
+        config.pretrained_model_name, 
+        revision=config.revision,
+        bos_token="[BOS]", 
+        eos_token="[EOS]", 
+        unk_token="[UNK]", 
+        pad_token="[PAD]", 
+        mask_token="[MASK]",
+    )
+    LOGGER.debug(f"Tokenizer loaded ({config.pretrained_model_name}, {config.revision})")
 
-    ## Since both models are quite large, we assign them to different gpus.
-    ## Each input is loaded according to the model, so don't worry too much about it.
-    model.to("cuda:0")
-    
+    model = transformers.AutoModelForCausalLM.from_pretrained(
+        config.pretrained_model_name, 
+        revision=config.revision,
+        pad_token_id=tokenizer.eos_token_id,
+        torch_dtype="auto",
+    ).to(device=config.device, non_blocking=True)
+
+    n_params = sum([p.numel() for p in model.parameters()]) / 10**9
+    LOGGER.debug(f"Weights loaded ({config.pretrained_model_name}, {config.revision}) (# params: {n_params:.2f})B")
+
     ## Don't forget turn-on evaluation mode.
-    model.eval()
+    _ = model.eval()
 
-    ## Generate candidates.
-    texts = GenerativeLanguageModel.generate(model, tokenizer, n=config.n, batch_size=config.batch_size)
+    ## Now, generate a lot of texts.
+    num_iters = int(np.ceil(config.n / config.batch_size))
+    texts = []
+    for _ in tqdm.tqdm(range(num_iters), desc="Generating"):
+        with torch.no_grad():
+            ## [0, 1] == [bos_token_id, eos_token_id]
+            tokens = torch.tensor([[0, 1]])[:, 1:].to(device=config.device, non_blocking=True)
 
-    ## Evaluate.
-    # results = GenerativeLanguageModel.evaluate(model1, model2, tokenizer1, tokenizer2, texts)
-    results = GenerativeLanguageModel.evaluate(model, tokenizer, texts)
+            ## Generate texts from tokens.
+            gen_tokens = model.generate(
+                tokens, 
+                do_sample=True, 
+                temperature=config.temperature,                 ## 0.8
+                # repetition_penalty=config.repetition_penalty,   ## 1.2 -> hence we are using zlib entropy metric, this is no meaning                min_length=config.min_length + 1,       ## + length of bos token
+                max_length=config.max_length + 1,       ## + length of bos token
+                num_return_sequences=config.batch_size, ## actually, it is not really same as the meaning of batchSize...
+            )
 
-    ## Metric 1: perplexity of base model.
-    metric = -np.log(results["base"])
-    metric = metric[np.logical_not(np.isnan(metric))] ## remove nan
-
-    LOGGER.debug(f"======== top sample by perplexity ========")
-    print_best(metric, results["text"], "ppl", results["base"], k=config.k)
-
-    ## Metric 2: the ratio of Zlib entropy and perplexity.
-    metric = results["zlib"] / np.log(results["base"])
-    metric = metric[np.logical_not(np.isnan(metric))] ## remove nan
+            ## Don't forget detaching from gpu into cpu.
+            generated = tokenizer.batch_decode(gen_tokens.cpu().numpy(), skip_special_tokens=True)
+            texts.extend(generated)
     
-    LOGGER.debug(f"======== top sample by ratio of Zlib entropy and perplexity ========")
-    print_best(metric, results["text"], "ppl", results["base"], "zlib", results["zlib"], k=config.k)
+    ## Drop remainers..
+    texts = texts[:config.n]
+    LOGGER.debug(f"{len(texts)} texts generated.")
+
+    ## Calculate perplexity (PPL).
+    ppl = []
+    for text in tqdm.tqdm(texts, desc="Calculating PPL"):
+        ## input_ids == target_ids.
+        input_ids = torch.tensor(tokenizer.encode(text)).unsqueeze(0)
+        target_ids = input_ids.clone()
+
+        ## Evaluate on a gpu.
+        with torch.no_grad():
+            outputs = model(input_ids.to(config.device), labels=target_ids.to(config.device))
+        
+        ## And the perplexity is exponential of the loss of a sentence.
+        loss, _ = outputs[:2]
+        ppl.append(float(torch.exp(loss).cpu().detach().numpy()))
+
+    ## Calculate zlib.
+    z = np.array([calculate_zlib_entropy(text) for text in texts])
+
+    ## Calculate the score.
+    ## We assume that the higher the compression ratio and the lower the ppl 
+    ## (i.e., loss), the higher the probability of inclusion in the training data.
+    score = z / ppl
+
+    ## Aggregate all.
+    df = pd.DataFrame({"text": texts, "ppl": ppl, "zlib": z, "score": score})
+    df = df.sort_values(by="score", ascending=False).reset_index(drop=True)
+
+    ## Select and mark top-k.
+    top_k_text = []
+    top_k_idx = []
+    for idx, row in df.iterrows():
+        if any([calculate_is_similar(row["text"], text) for text in texts]):
+            top_k_text.append(row["text"])
+            top_k_idx.append(idx)
+        
+        if len(top_k_text) >= config.k:
+            break
+    
+    df.loc[top_k_idx, "top_k"] = "TRUE"
+    df.loc[:, "top_k"] = df.loc[:, "top_k"].fillna("")
 
     ## Save it.
-    nowtime = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    save_it(results, save_path=f"./assets/{'KoGPT6B-ryan1.5b-float16'}-{nowtime}-{config.n}.csv")
+    Path(config.assets).mkdir(exist_ok=True)
+    save_path = Path(config.assets, f"{config.revision}-{nowtime}-{config.n}.csv")
+
+    df.to_csv(save_path, encoding="utf-8", index=False, header=True)
+    LOGGER.debug(f"Results save to {save_path}")
 
 
 if __name__ == "__main__":

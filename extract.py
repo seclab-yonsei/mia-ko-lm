@@ -165,8 +165,8 @@ def calculate_zlib_entropy(sentence: str) -> int:
 
 def calculate_is_similar(str1: str, str2: str, n_gram: int = 3) -> bool:
     ## Calculate trigram similarity: str1 (reference) vs str2 (hyphothesis).
-    ## It is same as "Is string 1 is similar to string 2?"
-    n_gram_set = lambda x: set([x[i::n_gram] for i in range(len(x)-n_gram)])
+    ## It is same as "Is string 1 is similar with string 2?"
+    n_gram_set = lambda x: set([x[i:i+n_gram] for i in range(len(x)-n_gram)])
 
     ## Return true if str1 is similar (or duplicated) to str2 else false.
     ## It is not recommended to mark two strings as similar, trivially.
@@ -275,24 +275,35 @@ def main(config):
     ## Select and mark top-k.
     top_k_text = []
     top_k_idx = []
-    for idx, row in tqdm.tqdm(df.iterrows(), desc="Deduplicating"):
-        ## Big O complexity: O(n(n-1)/2) where n is k.
-        if all([not calculate_is_similar(row["text"], text) for text in top_k_text]):
-            top_k_text.append(row["text"])  ## save for comparison
-            top_k_idx.append(idx)           ## save for marking
-        
-        if len(top_k_text) >= config.k:
-            break
+
+    with tqdm.tqdm(desc="Deduplicating", total=config.k) as pbar:
+        for idx, row in df.iterrows():
+            ## We only want top-k sentences.
+            if len(top_k_text) >= config.k:
+                break
+
+            ## Big O complexity: O(n(n-1)/2) where n is k.
+            if all([not calculate_is_similar(row["text"], text) for text in top_k_text]):
+                top_k_text.append(row["text"])  ## save for comparison
+                top_k_idx.append(idx)           ## save for marking
+
+                ## Update probress bar.
+                pbar.update(1)
     
     df.loc[top_k_idx, "top_k"] = "TRUE"
     df.loc[:, "top_k"] = df.loc[:, "top_k"].fillna("")
 
-    ## Save it.
+    ## Save the total results.
     Path(config.assets).mkdir(exist_ok=True)
     save_path = Path(config.assets, f"{config.revision}-{nowtime}-{config.n}.csv")
 
     df.to_csv(save_path, encoding="utf-8", index=False, header=True)
     LOGGER.debug(f"Results save to {save_path}")
+
+    ## Save top-k elements.
+    save_path_ = Path(config.assets, f"{config.revision}-{nowtime}-{config.n}-partial.csv")
+    df.loc[df.loc[:, "top_k"] == "TRUE", :].to_csv(save_path_, encoding="utf-8", index=False, header=True)
+    LOGGER.debug(f"Results save to {save_path_} (partial)")
 
 
 if __name__ == "__main__":

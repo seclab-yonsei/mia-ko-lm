@@ -17,7 +17,7 @@ from pathlib import Path
 LOGGER = logging.getLogger(__name__)
 
 
-def define_argparser():
+def define_argparser() -> argparse.Namespace:
     p = argparse.ArgumentParser()
 
     p.add_argument(
@@ -173,8 +173,8 @@ def calculate_is_similar(str1: str, str2: str, n_gram: int = 3) -> bool:
     return len(n_gram_set(str1) & n_gram_set(str2)) >= len(n_gram_set(str1)) / 2
 
 
-def main(config):
-    def print_config(config):
+def main(config: argparse.Namespace) -> None:
+    def print_config(config: argparse.Namespace) -> None:
         pprint.PrettyPrinter(indent=4, sort_dicts=False).pprint(vars(config))
     print_config(config)
 
@@ -224,7 +224,7 @@ def main(config):
                     tokens, 
                     do_sample=True, 
                     temperature=config.temperature,                 ## 0.8
-                    repetition_penalty=config.repetition_penalty,   ## 1.2 -> hence we are using zlib entropy metric, this is no meaning
+                    repetition_penalty=config.repetition_penalty,   ## 1.0 -> hence we are using zlib entropy metric, this is no meaning
                     min_length=config.min_length + prompt_len,
                     max_length=config.max_length + prompt_len,
                     num_return_sequences=config.batch_size,         ## actually, it is not really same as the meaning of batchSize...

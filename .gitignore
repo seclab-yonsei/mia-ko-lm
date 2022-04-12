@@ -1,7 +1,7 @@
 .ipynb_checkpoints/
 venv/
 __pycache__
-assets/
+assets/*.csv
 models/
 *.ipynb
 *.log

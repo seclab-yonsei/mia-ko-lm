@@ -1,0 +1,51 @@
+usage: extract.py [-h] [--n N] [--k K] [--batch_size BATCH_SIZE]
+                  [--temperature TEMPERATURE]
+                  [--repetition_penalty REPETITION_PENALTY]
+                  [--min_length MIN_LENGTH] [--max_length MAX_LENGTH]
+                  [--device DEVICE]
+                  [--pretrained_model_name PRETRAINED_MODEL_NAME]
+                  [--revision REVISION] [--assets ASSETS] [--logs LOGS] [-d]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --n N                 The number of texts you want to sample. Default=10000
+  --k K                 The number of texts you want to screen out of the
+                        sampled texts. Similar sentences are automatically
+                        removed. It is marked as TRUE in the top_k column of
+                        the resulting file. Default=100
+  --batch_size BATCH_SIZE
+                        The number of sentences to generate at once. It
+                        depends on the maximum VRAM size of the GPU. It is
+                        actually implemented as the argument
+                        num_return_sequences of the method generate; The
+                        number of independently computed returned sequences
+                        for each element in the batch. For a detailed
+                        explanation, please see: https://huggingface.co/docs/t
+                        ransformers/main_classes/model#transformers.generation
+                        _utils.GenerationMixin.generate Default=24
+  --temperature TEMPERATURE
+                        The value used to module the next token probabilities.
+                        Default=0.8
+  --repetition_penalty REPETITION_PENALTY
+                        The parameter for repetition penalty. 1.0 means no
+                        penalty. Default=1.0
+  --min_length MIN_LENGTH
+                        The minimum length of the sequence to be generated.
+                        Default=256
+  --max_length MAX_LENGTH
+                        The maximum length of the sequence to be generated.
+                        Default=256
+  --device DEVICE       The device on which the model will be loaded.
+                        Default=cuda:0
+  --pretrained_model_name PRETRAINED_MODEL_NAME
+                        The pretrained model to use. Default=kakaobrain/kogpt
+  --revision REVISION   The version of the pretrained model to use.
+                        Default=KoGPT6B-ryan1.5b-float16
+  --assets ASSETS       The folder where the output result file (*.csv) will
+                        be saved. The file name is saved as
+                        '{revision}-{nowtime}-{n}.csv' by default.
+                        Default=assets
+  --logs LOGS           The folder where the log files will be saved. The
+                        default name of the log is specified in the format
+                        '{nowtime}.log'. Default=logs
+  -d, --debug           Specifies the debugging mode. Default=True

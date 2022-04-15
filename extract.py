@@ -4,6 +4,7 @@ import transformers
 import argparse
 import datetime
 import logging
+import os
 import pprint
 import tqdm
 import zlib
@@ -43,7 +44,7 @@ def define_argparser() -> argparse.Namespace:
     p.add_argument(
         "--batch_size",
         type=int,
-        default=24,
+        default=32,
         help=" ".join([
             "The number of sentences to generate at once. It depends on the",
             "maximum VRAM size of the GPU. It is actually implemented as the",
@@ -75,7 +76,7 @@ def define_argparser() -> argparse.Namespace:
     p.add_argument(
         "--min_length",
         type=int,
-        default=256,
+        default=512,
         help=" ".join([
             "The minimum length of the sequence to be generated.",
             "Default=%(default)s",
@@ -84,7 +85,7 @@ def define_argparser() -> argparse.Namespace:
     p.add_argument(
         "--max_length",
         type=int,
-        default=256,
+        default=512,
         help=" ".join([
             "The maximum length of the sequence to be generated.",
             "Default=%(default)s",
@@ -102,21 +103,21 @@ def define_argparser() -> argparse.Namespace:
     p.add_argument(
         "--pretrained_model_name",
         type=str,
-        default="kakaobrain/kogpt",
+        default="skt/ko-gpt-trinity-1.2B-v0.5",
         help=" ".join([
             "The pretrained model to use.",
             "Default=%(default)s",
         ]),
     )
-    p.add_argument(
-        "--revision",
-        type=str,
-        default="KoGPT6B-ryan1.5b-float16",
-        help=" ".join([
-            "The version of the pretrained model to use.",
-            "Default=%(default)s",
-        ]),
-    )
+    # p.add_argument(
+    #     "--revision",
+    #     type=str,
+    #     default="KoGPT6B-ryan1.5b-float16",
+    #     help=" ".join([
+    #         "The version of the pretrained model to use.",
+    #         "Default=%(default)s",
+    #     ]),
+    # )
     p.add_argument(
         "--assets",
         type=str,
@@ -159,14 +160,15 @@ def define_logger(config: argparse.Namespace, save_path: str) -> None:
     LOGGER.debug(f"Log will save into {save_path}")
 
 
-def calculate_zlib_entropy(sentence: str) -> int:
-    return len(zlib.compress(bytes(sentence, "utf-8")))
+def calculate_zlib_entropy_ratio(sentence: str) -> int:
+    raw_sentence = bytes(sentence, "utf-8")
+    return len(zlib.compress(raw_sentence)) / len(raw_sentence)
 
 
 def calculate_is_similar(str1: str, str2: str, n_gram: int = 3) -> bool:
     ## Calculate trigram similarity: str1 (reference) vs str2 (hyphothesis).
     ## It is same as "Is string 1 is similar with string 2?"
-    n_gram_set = lambda x: set([x[i:i+n_gram] for i in range(len(x)-n_gram)])
+    n_gram_set = lambda x: set([" ".join([str(j) for j in x[i:i+n_gram]]) for i in range(len(x)-n_gram)])
 
     ## Return true if str1 is similar (or duplicated) to str2 else false.
     ## It is not recommended to mark two strings as similar, trivially.
@@ -187,24 +189,24 @@ def main(config: argparse.Namespace) -> None:
     ## See: https://github.com/kakaobrain/kogpt
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         config.pretrained_model_name, 
-        revision=config.revision,
-        bos_token="[BOS]", 
-        eos_token="[EOS]", 
-        unk_token="[UNK]", 
-        pad_token="[PAD]", 
-        mask_token="[MASK]",
+        # revision=config.revision,
+        # bos_token="[BOS]", 
+        # eos_token="[EOS]", 
+        # unk_token="[UNK]", 
+        # pad_token="[PAD]", 
+        # mask_token="[MASK]",
     )
-    LOGGER.debug(f"Tokenizer loaded ({config.pretrained_model_name}, {config.revision})")
+    LOGGER.debug(f"Tokenizer loaded ({config.pretrained_model_name})")
 
-    model = transformers.AutoModelForCausalLM.from_pretrained(
+    model = transformers.GPT2LMHeadModel.from_pretrained(
         config.pretrained_model_name, 
-        revision=config.revision,
+        # revision=config.revision,
         pad_token_id=tokenizer.eos_token_id,
         torch_dtype="auto",
     ).to(device=config.device, non_blocking=True)
 
     n_params = sum([p.numel() for p in model.parameters()]) / 10**9
-    LOGGER.debug(f"Weights loaded ({config.pretrained_model_name}, {config.revision}) (# params: {n_params:.2f})B")
+    LOGGER.debug(f"Weights loaded ({config.pretrained_model_name}) (# params: {n_params:.2f})B")
 
     ## Don't forget turn-on evaluation mode.
     _ = model.eval()
@@ -217,7 +219,7 @@ def main(config: argparse.Namespace) -> None:
             with torch.no_grad():
                 ## [0, 1] == [bos_token_id, eos_token_id]
                 prompt_len = 1
-                tokens = torch.tensor([[0, 1]])[:, 1:].to(device=config.device, non_blocking=True)
+                tokens = torch.tensor([[tokenizer.bos_token_id]]).to(device=config.device, non_blocking=True)
 
                 ## Generate texts from tokens.
                 gen_tokens = model.generate(
@@ -261,7 +263,7 @@ def main(config: argparse.Namespace) -> None:
         ppl.append(float(torch.exp(loss).cpu().detach().numpy()))
 
     ## Calculate zlib.
-    z = np.array([calculate_zlib_entropy(text) for text in texts])
+    z = np.array([calculate_zlib_entropy_ratio(text) for text in texts])
 
     ## Calculate the score.
     ## We assume that the higher the compression ratio and the lower the ppl 
@@ -283,7 +285,7 @@ def main(config: argparse.Namespace) -> None:
                 break
 
             ## Big O complexity: O(n(n-1)/2) where n is k.
-            if all([not calculate_is_similar(row["text"], text) for text in top_k_text]):
+            if all([not calculate_is_similar(tokenizer.encode(row["text"]), tokenizer.encode(text)) for text in top_k_text]):
                 top_k_text.append(row["text"])  ## save for comparison
                 top_k_idx.append(idx)           ## save for marking
 
@@ -295,13 +297,13 @@ def main(config: argparse.Namespace) -> None:
 
     ## Save the total results.
     Path(config.assets).mkdir(exist_ok=True)
-    save_path = Path(config.assets, f"{config.revision}-{nowtime}-{config.n}.csv")
+    save_path = Path(config.assets, f"{config.pretrained_model_name.replace(os.path.sep, '-')}-{nowtime}-{config.n}.csv")
 
     df.to_csv(save_path, encoding="utf-8", index=False, header=True)
     LOGGER.debug(f"Results save to {save_path}")
 
     ## Save top-k elements.
-    save_path_ = Path(config.assets, f"{config.revision}-{nowtime}-{config.n}-partial.csv")
+    save_path_ = Path(config.assets, f"{config.pretrained_model_name.replace(os.path.sep, '-')}-{nowtime}-{config.n}-partial.csv")
     df.loc[df.loc[:, "top_k"] == "TRUE", :].to_csv(save_path_, encoding="utf-8", index=False, header=True)
     LOGGER.debug(f"Results save to {save_path_} (partial)")
 

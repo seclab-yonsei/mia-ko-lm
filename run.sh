@@ -1,3 +1,3 @@
 python extract.py \
-    --n 100_000 \
+    --n 100 \
     --k 100

@@ -44,7 +44,7 @@ def define_argparser() -> argparse.Namespace:
     p.add_argument(
         "--batch_size",
         type=int,
-        default=32,
+        default=64,
         help=" ".join([
             "The number of sentences to generate at once. It depends on the",
             "maximum VRAM size of the GPU. It is actually implemented as the",
@@ -76,7 +76,7 @@ def define_argparser() -> argparse.Namespace:
     p.add_argument(
         "--min_length",
         type=int,
-        default=512,
+        default=256,
         help=" ".join([
             "The minimum length of the sequence to be generated.",
             "Default=%(default)s",
@@ -85,7 +85,7 @@ def define_argparser() -> argparse.Namespace:
     p.add_argument(
         "--max_length",
         type=int,
-        default=512,
+        default=256,
         help=" ".join([
             "The maximum length of the sequence to be generated.",
             "Default=%(default)s",
@@ -161,8 +161,7 @@ def define_logger(config: argparse.Namespace, save_path: str) -> None:
 
 
 def calculate_zlib_entropy_ratio(sentence: str) -> int:
-    raw_sentence = bytes(sentence, "utf-8")
-    return len(zlib.compress(raw_sentence)) / len(raw_sentence)
+    return len(zlib.compress(bytes(sentence, "utf-8")))
 
 
 def calculate_is_similar(str1: str, str2: str, n_gram: int = 3) -> bool:
@@ -201,7 +200,9 @@ def main(config: argparse.Namespace) -> None:
     model = transformers.GPT2LMHeadModel.from_pretrained(
         config.pretrained_model_name, 
         # revision=config.revision,
-        pad_token_id=tokenizer.eos_token_id,
+        bos_token_id=tokenizer.bos_token_id,
+        eos_token_id=tokenizer.eos_token_id,
+        pad_token_id=tokenizer.pad_token_id,
         torch_dtype="auto",
     ).to(device=config.device, non_blocking=True)
 
@@ -217,9 +218,12 @@ def main(config: argparse.Namespace) -> None:
     with tqdm.tqdm(total=config.n, desc="Generating Texts") as pbar:
         for i in range(num_iters):
             with torch.no_grad():
-                ## [0, 1] == [bos_token_id, eos_token_id]
+                ## Prompt == "<s>"
+                prompt = tokenizer.bos_token
                 prompt_len = 1
-                tokens = torch.tensor([[tokenizer.bos_token_id]]).to(device=config.device, non_blocking=True)
+
+                tokens = tokenizer.encode(prompt, return_tensors="pt").repeat(config.batch_size, 1)
+                tokens = tokens.to(device=config.device, non_blocking=True)
 
                 ## Generate texts from tokens.
                 gen_tokens = model.generate(
@@ -229,11 +233,13 @@ def main(config: argparse.Namespace) -> None:
                     repetition_penalty=config.repetition_penalty,   ## 1.0 -> hence we are using zlib entropy metric, this is no meaning
                     min_length=config.min_length + prompt_len,
                     max_length=config.max_length + prompt_len,
-                    num_return_sequences=config.batch_size,         ## actually, it is not really same as the meaning of batchSize...
+                    # num_return_sequences=config.batch_size,         ## actually, it is not really same as the meaning of batchSize...
                 )
 
                 ## Don't forget detaching from gpu into cpu.
                 generated = tokenizer.batch_decode(gen_tokens.cpu().numpy(), skip_special_tokens=True)
+                ## Sometimes, generated texts can be empty so that calculating ppl may cause exception.
+                generated = [i for i in generated if i != ""]
                 if i == num_iters - 1:
                     generated = generated[:config.n - i*config.batch_size]
 

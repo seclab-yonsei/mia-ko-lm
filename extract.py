@@ -44,7 +44,7 @@ def define_argparser() -> argparse.Namespace:
     p.add_argument(
         "--batch_size",
         type=int,
-        default=64,
+        default=32,
         help=" ".join([
             "The number of sentences to generate at once. It depends on the",
             "maximum VRAM size of the GPU. It is actually implemented as the",
@@ -76,7 +76,7 @@ def define_argparser() -> argparse.Namespace:
     p.add_argument(
         "--min_length",
         type=int,
-        default=256,
+        default=512,
         help=" ".join([
             "The minimum length of the sequence to be generated.",
             "Default=%(default)s",
@@ -85,7 +85,7 @@ def define_argparser() -> argparse.Namespace:
     p.add_argument(
         "--max_length",
         type=int,
-        default=256,
+        default=512,
         help=" ".join([
             "The maximum length of the sequence to be generated.",
             "Default=%(default)s",

@@ -1,4 +1,5 @@
 python extract.py \
-    --n 10_000 \
+    --n 100_000 \
     --k 100 \
-    --device "cuda:1"
+    --device "cuda:0" \
+    --batch_size 512

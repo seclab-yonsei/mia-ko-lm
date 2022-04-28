@@ -76,7 +76,7 @@ def define_argparser() -> argparse.Namespace:
     p.add_argument(
         "--min_length",
         type=int,
-        default=512,
+        default=256,
         help=" ".join([
             "The minimum length of the sequence to be generated.",
             "Default=%(default)s",
@@ -85,7 +85,7 @@ def define_argparser() -> argparse.Namespace:
     p.add_argument(
         "--max_length",
         type=int,
-        default=512,
+        default=256,
         help=" ".join([
             "The maximum length of the sequence to be generated.",
             "Default=%(default)s",
@@ -103,21 +103,12 @@ def define_argparser() -> argparse.Namespace:
     p.add_argument(
         "--pretrained_model_name",
         type=str,
-        default="skt/ko-gpt-trinity-1.2B-v0.5",
+        default="skt/kogpt2-base-v2",
         help=" ".join([
             "The pretrained model to use.",
             "Default=%(default)s",
         ]),
     )
-    # p.add_argument(
-    #     "--revision",
-    #     type=str,
-    #     default="KoGPT6B-ryan1.5b-float16",
-    #     help=" ".join([
-    #         "The version of the pretrained model to use.",
-    #         "Default=%(default)s",
-    #     ]),
-    # )
     p.add_argument(
         "--assets",
         type=str,
@@ -186,14 +177,13 @@ def main(config: argparse.Namespace) -> None:
 
     ## Get tokenizer and model.
     ## See: https://github.com/kakaobrain/kogpt
-    tokenizer = transformers.AutoTokenizer.from_pretrained(
+    tokenizer = transformers.PreTrainedTokenizerFast.from_pretrained(
         config.pretrained_model_name, 
-        # revision=config.revision,
-        # bos_token="[BOS]", 
-        # eos_token="[EOS]", 
-        # unk_token="[UNK]", 
-        # pad_token="[PAD]", 
-        # mask_token="[MASK]",
+        bos_token="</s>", 
+        eos_token="</s>", 
+        unk_token="<unk>",
+        pad_token="<pad>",
+        mask_token="<mask>",
     )
     LOGGER.debug(f"Tokenizer loaded ({config.pretrained_model_name})")
 

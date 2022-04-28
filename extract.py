@@ -125,7 +125,7 @@ def define_argparser() -> argparse.Namespace:
     )
     p.add_argument(
         "-d", "--debug", 
-        action="store_false", ## default: True
+        action="store_true", ## default: False
         help=" ".join([
             "Specifies the debugging mode.",
             "Default=%(default)s",

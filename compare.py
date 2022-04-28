@@ -5,7 +5,6 @@ import tqdm
 import numpy as np
 import pandas as pd
 
-from src.crawling import get_request_and_content
 from src.diff import get_difference
 
 

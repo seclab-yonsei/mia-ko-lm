@@ -7,3 +7,5 @@ models/
 *.log
 *.csv
 logs/
+src/crawling.py
+run.sh

@@ -1,18 +1,12 @@
-import torch
-import transformers
-
 import argparse
 import datetime
 import logging
-import os
 import pprint
-import tqdm
-import zlib
-
-import numpy as np
-import pandas as pd
 
 from pathlib import Path
+
+from src.model import GPT2ModelForExtraction
+from src.utils import save_results
 
 
 LOGGER = logging.getLogger(__name__)
@@ -151,20 +145,6 @@ def define_logger(config: argparse.Namespace, save_path: str) -> None:
     LOGGER.debug(f"Log will save into {save_path}")
 
 
-def calculate_zlib_entropy_ratio(sentence: str) -> int:
-    return len(zlib.compress(bytes(sentence, "utf-8")))
-
-
-def calculate_is_similar(str1: str, str2: str, n_gram: int = 3) -> bool:
-    ## Calculate trigram similarity: str1 (reference) vs str2 (hyphothesis).
-    ## It is same as "Is string 1 is similar with string 2?"
-    n_gram_set = lambda x: set([" ".join([str(j) for j in x[i:i+n_gram]]) for i in range(len(x)-n_gram)])
-
-    ## Return true if str1 is similar (or duplicated) to str2 else false.
-    ## It is not recommended to mark two strings as similar, trivially.
-    return len(n_gram_set(str1) & n_gram_set(str2)) >= len(n_gram_set(str1)) / 2
-
-
 def main(config: argparse.Namespace) -> None:
     def print_config(config: argparse.Namespace) -> None:
         pprint.PrettyPrinter(indent=4, sort_dicts=False).pprint(vars(config))
@@ -175,133 +155,20 @@ def main(config: argparse.Namespace) -> None:
     nowtime = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     define_logger(config, save_path=f"{config.logs}/{nowtime}.log")
 
-    ## Get tokenizer and model.
-    ## See: https://github.com/kakaobrain/kogpt
-    tokenizer = transformers.PreTrainedTokenizerFast.from_pretrained(
-        config.pretrained_model_name, 
-        bos_token="</s>", 
-        eos_token="</s>", 
-        unk_token="<unk>",
-        pad_token="<pad>",
-        mask_token="<mask>",
-    )
-    LOGGER.debug(f"Tokenizer loaded ({config.pretrained_model_name})")
+    ## Get extractor.
+    extractor = GPT2ModelForExtraction(config)
 
-    model = transformers.GPT2LMHeadModel.from_pretrained(
-        config.pretrained_model_name, 
-        # revision=config.revision,
-        bos_token_id=tokenizer.bos_token_id,
-        eos_token_id=tokenizer.eos_token_id,
-        pad_token_id=tokenizer.pad_token_id,
-        torch_dtype="auto",
-    ).to(device=config.device, non_blocking=True)
+    ## Generate.
+    texts = extractor.generate()
 
-    n_params = sum([p.numel() for p in model.parameters()]) / 10**9
-    LOGGER.debug(f"Weights loaded ({config.pretrained_model_name}) (# params: {n_params:.2f})B")
+    ## Calculate scores.
+    results = extractor.score(texts) ## dataframe
 
-    ## Don't forget turn-on evaluation mode.
-    _ = model.eval()
+    ## Deduplicate.
+    results = extractor.deduplicate(texts)
 
-    ## Now, generate a lot of texts.
-    num_iters = int(np.ceil(config.n / config.batch_size))
-    texts = []
-    with tqdm.tqdm(total=config.n, desc="Generating Texts") as pbar:
-        for i in range(num_iters):
-            with torch.no_grad():
-                ## Prompt == "<s>"
-                prompt = tokenizer.bos_token
-                prompt_len = 1
-
-                tokens = tokenizer.encode(prompt, return_tensors="pt").repeat(config.batch_size, 1)
-                tokens = tokens.to(device=config.device, non_blocking=True)
-
-                ## Generate texts from tokens.
-                gen_tokens = model.generate(
-                    tokens, 
-                    do_sample=True, 
-                    temperature=config.temperature,                 ## 0.8
-                    repetition_penalty=config.repetition_penalty,   ## 1.0 -> hence we are using zlib entropy metric, this is no meaning
-                    min_length=config.min_length + prompt_len,
-                    max_length=config.max_length + prompt_len,
-                    # num_return_sequences=config.batch_size,         ## actually, it is not really same as the meaning of batchSize...
-                )
-
-                ## Don't forget detaching from gpu into cpu.
-                generated = tokenizer.batch_decode(gen_tokens.cpu().numpy(), skip_special_tokens=True)
-                ## Sometimes, generated texts can be empty so that calculating ppl may cause exception.
-                generated = [i for i in generated if i != ""]
-                if i == num_iters - 1:
-                    generated = generated[:config.n - i*config.batch_size]
-
-                texts.extend(generated)
-            
-            ## Update progressbar.
-            pbar.update(len(generated))
-            
-        
-    ## Drop remainers..
-    texts = texts[:config.n]
-    LOGGER.debug(f"{len(texts)} texts generated.")
-
-    ## Calculate perplexity (PPL).
-    ppl = []
-    for text in tqdm.tqdm(texts, desc="Calculating PPL"):
-        ## input_ids == target_ids.
-        input_ids = torch.tensor(tokenizer.encode(text)).unsqueeze(0)
-        target_ids = input_ids.clone()
-
-        ## Evaluate on a gpu.
-        with torch.no_grad():
-            outputs = model(input_ids.to(config.device), labels=target_ids.to(config.device))
-        
-        ## And the perplexity is exponential of the loss of a sentence.
-        loss, _ = outputs[:2]
-        ppl.append(float(torch.exp(loss).cpu().detach().numpy()))
-
-    ## Calculate zlib.
-    z = np.array([calculate_zlib_entropy_ratio(text) for text in texts])
-
-    ## Calculate the score.
-    ## We assume that the higher the compression ratio and the lower the ppl 
-    ## (i.e., loss), the higher the probability of inclusion in the training data.
-    score = z / ppl
-
-    ## Aggregate all.
-    df = pd.DataFrame({"text": texts, "ppl": ppl, "zlib": z, "score": score})
-    df = df.sort_values(by="score", ascending=False).reset_index(drop=True)
-
-    ## Select and mark top-k.
-    top_k_text = []
-    top_k_idx = []
-
-    with tqdm.tqdm(desc="Deduplicating", total=config.k) as pbar:
-        for idx, row in df.iterrows():
-            ## We only want top-k sentences.
-            if len(top_k_text) >= config.k:
-                break
-
-            ## Big O complexity: O(n(n-1)/2) where n is k.
-            if all([not calculate_is_similar(tokenizer.encode(row["text"]), tokenizer.encode(text)) for text in top_k_text]):
-                top_k_text.append(row["text"])  ## save for comparison
-                top_k_idx.append(idx)           ## save for marking
-
-                ## Update probress bar.
-                pbar.update(1)
-    
-    df.loc[top_k_idx, "top_k"] = "TRUE"
-    df.loc[:, "top_k"] = df.loc[:, "top_k"].fillna("")
-
-    ## Save the total results.
-    Path(config.assets).mkdir(exist_ok=True)
-    save_path = Path(config.assets, f"{config.pretrained_model_name.replace(os.path.sep, '-')}-{nowtime}-{config.n}.csv")
-
-    df.to_csv(save_path, encoding="utf-8", index=False, header=True)
-    LOGGER.debug(f"Results save to {save_path}")
-
-    ## Save top-k elements.
-    save_path_ = Path(config.assets, f"{config.pretrained_model_name.replace(os.path.sep, '-')}-{nowtime}-{config.n}-partial.csv")
-    df.loc[df.loc[:, "top_k"] == "TRUE", :].to_csv(save_path_, encoding="utf-8", index=False, header=True)
-    LOGGER.debug(f"Results save to {save_path_} (partial)")
+    ## Save.
+    save_results(config, results, nowtime)
 
 
 if __name__ == "__main__":

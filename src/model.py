@@ -8,6 +8,7 @@ import tqdm
 import numpy as np
 import pandas as pd
 
+from operator import itemgetter
 from typing import List, Dict
 
 
@@ -40,7 +41,6 @@ class GPT2ModelForExtraction():
 
     def _get_tokenizer(self, pretrained_model_name_or_path: str, device: str):
         ## Get tokenizer.
-        ## See: https://github.com/kakaobrain/kogpt
         tokenizer = transformers.PreTrainedTokenizerFast.from_pretrained(
             pretrained_model_name_or_path, 
             bos_token=BOS_TOKEN, 
@@ -49,7 +49,7 @@ class GPT2ModelForExtraction():
             pad_token=PAD_TOKEN,
             mask_token=MASK_TOKEN,
         )
-        LOGGER.debug(f"Tokenizer loaded ({pretrained_model_name_or_path})")
+        LOGGER.debug(f"Tokenizer loaded: {pretrained_model_name_or_path}")
 
         ## Get model.
         model = transformers.GPT2LMHeadModel.from_pretrained(
@@ -60,8 +60,8 @@ class GPT2ModelForExtraction():
             torch_dtype="auto",
         ).to(device=device, non_blocking=True)
 
-        n_params = sum([p.numel() for p in model.parameters()]) / 10**9 ## GB
-        LOGGER.debug(f"Weights loaded ({pretrained_model_name_or_path}) (# params: {n_params:.2f})B")
+        n_params = sum([p.numel() for p in model.parameters()]) / 10**6 ## M
+        LOGGER.debug(f"Weights loaded: {pretrained_model_name_or_path} (# params: {n_params:.2f}M)")
 
         return tokenizer, model
 
@@ -143,12 +143,11 @@ class GPT2ModelForExtraction():
         ppl = np.array(ppl)
         score = z / ppl
 
-        return pd.DataFrame({
-            "text": texts,
-            "score": score,
-            "ppl": ppl,
-            "zlib": z,
-        })
+        ## Sort by scores.
+        df = pd.DataFrame({"text": texts, "score": score, "ppl": ppl, "zlib": z})
+        df = df.sort_values(by="score", ascending=False).reset_index(drop=True)
+
+        return df
 
     
     def deduplicate(self, df: pd.DataFrame) -> pd.DataFrame:

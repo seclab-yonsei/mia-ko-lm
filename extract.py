@@ -114,16 +114,6 @@ def define_argparser() -> argparse.Namespace:
         ]),
     )
     p.add_argument(
-        "--logs",
-        type=str,
-        default="logs",
-        help=" ".join([
-            "The folder where the log files will be saved. The default",
-            "name of the log is specified in the format '{nowtime}.log'.",
-            "Default=%(default)s",
-        ]),
-    )
-    p.add_argument(
         "-d", "--debug", 
         action="store_true", ## default: False
         help=" ".join([
@@ -136,13 +126,12 @@ def define_argparser() -> argparse.Namespace:
     return config
 
 
-def define_logger(config: argparse.Namespace, save_path: str) -> None:
+def define_logger(config: argparse.Namespace) -> None:
     log_format = "[%(asctime)s] [%(levelname)s] %(message)s"
     level = logging.DEBUG if config.debug else logging.INFO
 
     ## Save log.
-    logging.basicConfig(level=level, format=log_format, filename=save_path, filemode="w")
-    LOGGER.debug(f"Log will save into {save_path}")
+    logging.basicConfig(level=level, format=log_format)
 
 
 def main(config: argparse.Namespace) -> None:
@@ -151,9 +140,7 @@ def main(config: argparse.Namespace) -> None:
     print_config(config)
 
     ## Set logger.
-    Path(config.logs).mkdir(exist_ok=True)
-    nowtime = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    define_logger(config, save_path=f"{config.logs}/{nowtime}.log")
+    define_logger(config)
 
     ## Get extractor.
     extractor = GPT2ModelForExtraction(config)
@@ -165,10 +152,10 @@ def main(config: argparse.Namespace) -> None:
     results = extractor.score(texts) ## dataframe
 
     ## Deduplicate.
-    results = extractor.deduplicate(texts)
+    results = extractor.deduplicate(results)
 
     ## Save.
-    save_results(config, results, nowtime)
+    save_results(config, results)
 
 
 if __name__ == "__main__":

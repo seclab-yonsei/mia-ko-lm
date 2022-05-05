@@ -2,11 +2,9 @@
 
 Performing membership inference attack (MIA) against Korean language models (LMs).
 
-
 ## Environments
 
 A GPU with at least 16 GB of VRAM is required.
-
 
 ## Usage
 
@@ -20,7 +18,7 @@ conda activate py38
 After that, install the necessary libraries.
 
 ```bash
-## It is also possible to use the 'conda' command. 
+## It is also possible to use the 'conda' command.
 pip install -r requirements.txt
 ```
 
@@ -31,7 +29,6 @@ bash run.sh
 ```
 
 For a more detailed description of the parameters, see [here](./assets/help.txt).
-
 
 ## Results
 

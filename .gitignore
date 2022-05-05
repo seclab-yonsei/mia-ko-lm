@@ -9,3 +9,6 @@ models/
 logs/
 src/crawling.py
 run.sh
+
+compare.py
+diff.py

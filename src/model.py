@@ -109,28 +109,36 @@ class GPT2ModelForExtraction:
         _ = self.model.eval()
 
         ## Now, generate a lot of texts.
-        num_iters = int(np.ceil(self.config.n / self.config.batch_size))
+        num_iters = int(
+            np.ceil(
+                self.config.n
+                / (self.config.batch_size * self.config.num_return_sequences)
+            )
+        )
         texts = []
         with tqdm.tqdm(total=self.config.n, desc="Generating Texts") as pbar:
             for i in range(num_iters):
                 with torch.no_grad():
                     # KyKim's tokenizer should have no prompt.
-                    prompt = (
-                        ""
-                        if self.config.pretrained_model_name
-                        == "kykim/gpt3-kor-small_based_on_gpt2"
-                        else self.tokenizer.bos_token
-                    )
+                    # prompt = (
+                    #     ""
+                    #     if self.config.pretrained_model_name
+                    #     == "kykim/gpt3-kor-small_based_on_gpt2"
+                    #     else self.tokenizer.bos_token
+                    # )
                     prompt_len = 1
 
-                    tokens = self.tokenizer.encode(prompt, return_tensors="pt").repeat(
+                    # tokens = self.tokenizer.encode(prompt, return_tensors="pt").repeat(
+                    #     self.config.batch_size, 1
+                    # )
+                    # if (
+                    #     self.config.pretrained_model_name
+                    #     == "kykim/gpt3-kor-small_based_on_gpt2"
+                    # ):
+                    #     tokens = tokens[:, 1:]
+                    tokens = torch.tensor([[0, 1]])[:, 1:].repeat(
                         self.config.batch_size, 1
                     )
-                    if (
-                        self.config.pretrained_model_name
-                        == "kykim/gpt3-kor-small_based_on_gpt2"
-                    ):
-                        tokens = tokens[:, 1:]
                     tokens = tokens.to(device=self.config.device, non_blocking=True)
 
                     ## Generate texts from tokens.
@@ -141,7 +149,7 @@ class GPT2ModelForExtraction:
                         repetition_penalty=self.config.repetition_penalty,  ## 1.0 -> hence we are using zlib entropy metric, this is no meaning
                         min_length=self.config.min_length + prompt_len,
                         max_length=self.config.max_length + prompt_len,
-                        # num_return_sequences=self.config.batch_size,         ## actually, it is not really same as the meaning of batchSize...
+                        num_return_sequences=self.config.num_return_sequences,  ## actually, it is not really same as the meaning of batchSize...
                     )
 
                     ## Don't forget detaching from gpu into cpu.
@@ -152,7 +160,10 @@ class GPT2ModelForExtraction:
                     generated = [i for i in generated if i != ""]
                     if i == num_iters - 1:
                         generated = generated[
-                            : self.config.n - i * self.config.batch_size
+                            : self.config.n
+                            - i
+                            * self.config.batch_size
+                            * self.config.num_return_sequences
                         ]
 
                     texts.extend(generated)

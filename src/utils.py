@@ -22,7 +22,10 @@ def save_results(config: argparse.Namespace, df: pd.DataFrame):
                 config.pretrained_model_name.replace(os.path.sep, "-"),
                 config.revision,
                 nowtime,
-                str(config.n),
+                f"bs{config.batch_size}",
+                f"rs{config.num_return_sequences}",
+                f"n{config.n}",
+                f"k{config.k}",
             ]
         )
         + ".csv"

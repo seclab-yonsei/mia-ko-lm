@@ -97,6 +97,16 @@ def define_argparser() -> argparse.Namespace:
         ),
     )
     p.add_argument(
+        "--num_return_sequences",
+        type=int,
+        default=1,
+        help=" ".join(
+            [
+                "Default=%(default)s",
+            ]
+        ),
+    )
+    p.add_argument(
         "--device",
         type=str,
         default="cuda:0",

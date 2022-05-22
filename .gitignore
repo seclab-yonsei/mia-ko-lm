@@ -8,6 +8,7 @@ models/
 *.csv
 logs/
 src/crawling.py
+src/
 run.sh
 
 compare.py

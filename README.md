@@ -1,4 +1,4 @@
-# Membership Inference Attack - Korean - Language Model
+# Membership Inference - Korean - Language Model
 
 Performing membership inference attack (MIA) against Korean language models (LMs).
 
@@ -19,26 +19,39 @@ After that, install the necessary libraries.
 
 ```bash
 ## It is also possible to use the 'conda' command.
-pip install -r requirements.txt
+(py38) pip install -r requirements.txt
 ```
 
 Now, just run it.
 
 ```bash
-bash run.sh
+(py38) python extract.py \
+    --n 100_000 \
+    --k 100 \
+    --batch_size 24 \
+    --temperature 1.0 \
+    --repetition_penalty 1.0 \
+    --min_length 256 \
+    --max_length 256 \
+    --num_return_sequences 1 \
+    --device "cuda:0" \
+    --pretrained_model_name "kakaobrain/kogpt" \
+    --revision "KoGPT6B-ryan1.5b-float16" \
+    --assets assets \
+    --debug
 ```
 
 For a more detailed description of the parameters, see [here](./assets/help.txt).
 
-## Results
+## Citation
 
-100,000개의 텍스트 중 유효하지 않은 (즉, 비어있는) 문자열이 8회 생성되어 총 생성된 텍스트는 99992개
+Please cite below if you make use of the code.
 
-텍스트 생성에는 약 5시간 10분 51초 (초당 5.36개 텍스트 생성)
-
-PPL 계산에는 약 1시간 44분 42초 (초당 15.92개 텍스트 계산)
-
-###
-
-왼쪽 cuda:0: 프롬프트를 BOS 토큰으로
-오른쪽 cuda:1: 프롬프트를 EOS 토큰으로
+```
+@misc{oh2022on,
+  title={On Membership Inference Attacks to Generative Language Models across Language Domains},
+  author={Myung Gyo Oh and Leo Hyun Park and Jaeuk Kim and Jaewoo Park and Taekyoung Kwon},
+  year={2022},
+  howpublished={\url{https://github.com/cawandmilk/mia-ko-lm}},
+}
+```

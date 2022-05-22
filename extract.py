@@ -41,8 +41,6 @@ def define_argparser() -> argparse.Namespace:
         help=" ".join(
             [
                 "The number of texts you want to screen out of the sampled texts.",
-                "Similar sentences are automatically removed. It is marked as TRUE",
-                "in the top_k column of the resulting file.",
                 "Default=%(default)s",
             ]
         ),
@@ -54,11 +52,7 @@ def define_argparser() -> argparse.Namespace:
         help=" ".join(
             [
                 "The number of sentences to generate at once. It depends on the",
-                "maximum VRAM size of the GPU. It is actually implemented as the",
-                "argument num_return_sequences of the method generate; The number",
-                "of independently computed returned sequences for each element in",
-                "the batch. For a detailed explanation, please see:",
-                "https://huggingface.co/docs/transformers/main_classes/model#transformers.generation_utils.GenerationMixin.generate",
+                "maximum VRAM size of the GPU.",
                 "Default=%(default)s",
             ]
         ),
@@ -123,6 +117,9 @@ def define_argparser() -> argparse.Namespace:
         default=1.0,
         help=" ".join(
             [
+                "If set to float < 1, only the most probable tokens",
+                "with probabilities that add up to top_p or higher are",
+                "kept for generation.",
                 "Default=%(default)s",
             ]
         ),
@@ -133,6 +130,8 @@ def define_argparser() -> argparse.Namespace:
         default=40,
         help=" ".join(
             [
+                "The number of highest probability vocabulary tokens",
+                "to keep for top-k-filtering.",
                 "Default=%(default)s",
             ]
         ),

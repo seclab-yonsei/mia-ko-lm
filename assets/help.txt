@@ -2,27 +2,20 @@ usage: extract.py [-h] [--n N] [--k K] [--batch_size BATCH_SIZE]
                   [--temperature TEMPERATURE]
                   [--repetition_penalty REPETITION_PENALTY]
                   [--min_length MIN_LENGTH] [--max_length MAX_LENGTH]
-                  [--device DEVICE]
+                  [--num_return_sequences NUM_RETURN_SEQUENCES]
+                  [--top_p TOP_P] [--top_k TOP_K] [--device DEVICE]
                   [--pretrained_model_name PRETRAINED_MODEL_NAME]
-                  [--assets ASSETS] [-d]
+                  [--revision REVISION] [--assets ASSETS] [-d]
 
 optional arguments:
   -h, --help            show this help message and exit
   --n N                 The number of texts you want to sample. Default=10000
   --k K                 The number of texts you want to screen out of the
-                        sampled texts. Similar sentences are automatically
-                        removed. It is marked as TRUE in the top_k column of
-                        the resulting file. Default=100
+                        sampled texts. Default=100
   --batch_size BATCH_SIZE
                         The number of sentences to generate at once. It
-                        depends on the maximum VRAM size of the GPU. It is
-                        actually implemented as the argument
-                        num_return_sequences of the method generate; The
-                        number of independently computed returned sequences
-                        for each element in the batch. For a detailed
-                        explanation, please see: https://huggingface.co/docs/t
-                        ransformers/main_classes/model#transformers.generation
-                        _utils.GenerationMixin.generate Default=32
+                        depends on the maximum VRAM size of the GPU.
+                        Default=32
   --temperature TEMPERATURE
                         The value used to module the next token probabilities.
                         Default=0.8
@@ -35,11 +28,18 @@ optional arguments:
   --max_length MAX_LENGTH
                         The maximum length of the sequence to be generated.
                         Default=256
+  --num_return_sequences NUM_RETURN_SEQUENCES
+                        Default=1
+  --top_p TOP_P         If set to float < 1, only the most probable tokens
+                        with probabilities that add up to top_p or higher are
+                        kept for generation. Default=1.0
+  --top_k TOP_K         The number of highest probability vocabulary tokens to
+                        keep for top-k-filtering. Default=40
   --device DEVICE       The device on which the model will be loaded.
                         Default=cuda:0
   --pretrained_model_name PRETRAINED_MODEL_NAME
-                        The pretrained model to use.
-                        Default=skt/kogpt2-base-v2
+                        The pretrained model to use. Default=kakaobrain/kogpt
+  --revision REVISION   The specific model version to use. Default=main
   --assets ASSETS       The folder where the output result file (*.csv) will
                         be saved. The file name is saved as
                         '{revision}-{nowtime}-{n}.csv' by default.

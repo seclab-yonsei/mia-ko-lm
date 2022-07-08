@@ -53,23 +53,21 @@ For a more detailed description of the parameters, see [here](./assets/help.txt)
 
 ### Extrinsic Evaluation
 
-우리는 Korean-based GPT \[1\]에 대해 membership inference를 수행하여 100,000개의 샘플을 생성하였습니다. 이후 우리는 4개의 metric (PPL, zlib, Lowercase, and Window)을 기반으로 각각 top-100개의 잠재적인 후보 샘플을 선택하고, Google을 이용하여 manually search 하였습니다. 실험 결과는 다음과 같습니다:
+We generated 100,000 samples by performing membership inference on Korean-based GPT \[1\]. Afterward, we selected top-100 potential candidate samples based on four metrics (`PPL`, `zlib`, `Lowercase`, and `Window`) and manually searched them using Google. The experimental results are as follows:
 
-(Table)
+| Target System       |  `PPL` | `zlib` | `Lowercase` | `Window` |
+| :------------------ | -----: | -----: | ----------: | -------: |
+| GPT-2 (XL) \[2, 3\] |      9 |     59 |      **53** |       33 |
+| KoGPT \[1\]         | **89** | **90** |          20 |   **52** |
+| **Difference**      |    ↑80 |    ↑31 |         ↓33 |      ↑19 |
 
-| Target System       |    PPL |   zlib | Lowercase | Window |
-| :------------------ | -----: | -----: | --------: | -----: |
-| GPT-2 (XL) \[2, 3\] |      9 |     59 |    **53** |     33 |
-| KoGPT \[1\]         | **89** | **90** |        20 | **52** |
-| **Difference**      |    ↑80 |    ↑31 |       ↓33 |    ↑19 |
-
-Although we detected more redundant samples than in the previous work, it is premature to conclude that the KoGPT model is vulnerable. Since our target system is 4.0× larger than that of Carlini et al.
+Although we detected more redundant samples than in the previous work, it is premature to conclude that the `KoGPT` is vulnerable. Thus, our target system is 4.0× larger than Carlini _et al._'s work \[2\].
 
 ### Intrinsic Evaluation
 
-각 metric에 대해 우리가 실제로 발견한 top-k 샘플의 일부는 다음과 같습니다.
+Here are some of the top-_k_ samples we found for each metric:
 
-- PPL
+- `PPL`
 
   Top-1, PPL=1.015625 (We do not disclose the URL as we consider it sensitive information.)
 
@@ -91,7 +89,7 @@ Although we detected more redundant samples than in the previous work, it is pre
 
   > 1\. 양파는 혈액 속의 불필요한 지방과 콜레스테롤을 녹여 없앤다. 그 결과 동맥경화와 고지혈증을 예방하고 치료한다. 2. 양파는 혈관을 막는 혈전 형성을 방지함과 동시에 혈전을 분해해서 없애버린다. 그 결과 혈전이 심하면 사망에 이르는 순환기장애(협심증, 심근경색, 뇌연화증, 뇌졸중 등)의 질병을 예방, 치료 한다. 3. 양파는 혈액을 묽게 하는 작용(섬유소 용해활성 작용과 지질 저하작용)으로 혈액의 점도(粘度)를 낮춰 끈적거리지 않고 흐르기 쉬우며 맑고 깨끗한 혈액으로 만든다. 그 결과 혈액 순환이 좋아 산소와 영양의 신체 공급이 잘 이루어진다. 4. 양파는 혈압을 내리는 작용도 현저하다. 그 결과 고혈압의 예방과 치료에 탁월하다. 5. 양파는 아주 미세한 모세혈관까지 강화한다. 6. 양파는 말초조직에 쌓인 콜레스테롤을 제거하는 중요한 역할을 하는 HDL(고밀도지단백) 콜레스테롤을 증가시켜 준다. 특히 이것을 많이 필요로 하는 심장병 환자는 자극이 강한 스트롱 계열의 생양파를 먹어야 효과가 있다. HDL 콜레스테롤과 관련된
 
-- zlib
+- `zlib`
 
   [Top-7, PPL=1.0283203125](http://jdm0777.com/alcol/alcol.htm)
 
@@ -113,7 +111,7 @@ Although we detected more redundant samples than in the previous work, it is pre
 
   > 아래의 사진들은 미군종포토 저널리스트인Don O"Brien이 1945-46년 한국에 일본군 무장 해재를 위해 한국에 진주한 미군과 함께 한국으로 와서 찍은 사진들이다. 한국노인과 사진작가 O'Brien 일본 오키나와에서 한국으로 출발전 미통신대. 찦차앞 범퍼에 세워저 있는 도구는 찰조망을 자르는 장비. 유럽에서 기록사진을 촬영하든 미통신부대 (미군은 통신 부대가 기록 사진을 찍는 업무를 담딩한다)는 히틀러의 패망으로 배를 타고 58일간의 긴 항해 끝에 유럽의 반대쪽에 있는 오키나와에 도착했다. 일본이 항복을 하고 그해 9월 이들은 오키나와에서 배를 타고 일본군의 무장해제를 위해 상륙하는 미군과 함께 인천에 상륙했다. 인천항에 도착한 기록사진 요원들과 그들이 사용하는 장비. 악의가 없는 천사 같은 어린아이의 눈을 가진 이 노인이 정말 내 마음을 사로 잡는다. 한강에서 배한척이 물살을 가르며 평화로운 모습으로 어디론가 향해 가고 있다. 핵폭탄 두발을 맞고 항복한 일본에서 귀국한 동포들의 모습. 나는 이들이
 
-- Lowercase
+- `Lowercase`
 
   [Top-6, PPL=1.1943359375](http://www.dechoir.net/board2/board02/view.html?no=1125&page=23&table=board2_2)
 
@@ -135,7 +133,7 @@ Although we detected more redundant samples than in the previous work, it is pre
 
   > ◐ 프랑스 파리의 아름다운 풍경 ◑ ◐ 프랑스 파리의 아름다운 풍경 ◑ ◐ 프랑스 파리의 아름다운 풍경 ◑ 파리 프랑스의 수도이며 유럽 최대의 대도시권 가운데 하나. 2,000여 년 전 센 강에 있는 섬에 세워진 이 도시는 영국 해협에 면한 센 강 어귀로부내륙쪽으로 약 375km 되는 지점에 자리잡고 있다. 인구: 시: 220만명 대도시권: 1000만명수세기 동안 파리는 세계에서 가장 중요하고 매력적인 도시 가운데 하나였다. 상거래나 학문·예술 등이 활성화된 곳으로 인정받고 있으며, 이곳의 요리, 최신 유행의 복식, 미술, 문학, 지식인 사회는 특히 선망의 대상이 될 만큼 유명하다. 프랑크족의 왕 클로비스가 AD 494년 갈리아인들로부터파리를 탈취한 뒤 수도로 삼았다. 14세기에 파리는 흑사병(1348~49)과 100년전쟁(1337~1453), 그로 인한 내부적 혼란 때문에 발달이 지체되었으나 1789년프랑스 혁명이후파리는 중앙집권화된 프랑스 수도로서의 지위를 확고히 했다. 나폴레옹 시대에 진행된 산업화는 왕정복고시대(1814~30)
 
-- Window
+- `Window`
 
   Top-1, PPL=4.125 (We can not find the original website.)
 

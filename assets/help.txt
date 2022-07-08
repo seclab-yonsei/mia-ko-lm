@@ -1,5 +1,5 @@
-usage: extract.py [-h] [--n N] [--k K] [--batch_size BATCH_SIZE]
-                  [--temperature TEMPERATURE]
+usage: extract.py [-h] [--n N] [--k K] [--alpha ALPHA]
+                  [--batch_size BATCH_SIZE] [--temperature TEMPERATURE]
                   [--repetition_penalty REPETITION_PENALTY]
                   [--min_length MIN_LENGTH] [--max_length MAX_LENGTH]
                   [--num_return_sequences NUM_RETURN_SEQUENCES]
@@ -12,13 +12,14 @@ optional arguments:
   --n N                 The number of texts you want to sample. Default=10000
   --k K                 The number of texts you want to screen out of the
                         sampled texts. Default=100
+  --alpha ALPHA         Threshold value for similarity. Default=0.5
   --batch_size BATCH_SIZE
                         The number of sentences to generate at once. It
                         depends on the maximum VRAM size of the GPU.
-                        Default=32
+                        Default=16
   --temperature TEMPERATURE
                         The value used to module the next token probabilities.
-                        Default=0.8
+                        Default=1.0
   --repetition_penalty REPETITION_PENALTY
                         The parameter for repetition penalty. 1.0 means no
                         penalty. Default=1.0
@@ -29,7 +30,8 @@ optional arguments:
                         The maximum length of the sequence to be generated.
                         Default=256
   --num_return_sequences NUM_RETURN_SEQUENCES
-                        Default=1
+                        Number of generating output statements from LM using a
+                        single input.Default=1
   --top_p TOP_P         If set to float < 1, only the most probable tokens
                         with probabilities that add up to top_p or higher are
                         kept for generation. Default=1.0

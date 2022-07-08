@@ -46,9 +46,20 @@ def define_argparser() -> argparse.Namespace:
         ),
     )
     p.add_argument(
+        "--alpha",
+        type=float,
+        default=0.5,
+        help=" ".join(
+            [
+                "Threshold value for similarity.",
+                "Default=%(default)s",
+            ]
+        ),
+    )
+    p.add_argument(
         "--batch_size",
         type=int,
-        default=32,
+        default=16,
         help=" ".join(
             [
                 "The number of sentences to generate at once. It depends on the",
@@ -60,7 +71,7 @@ def define_argparser() -> argparse.Namespace:
     p.add_argument(
         "--temperature",
         type=float,
-        default=0.8,
+        default=1.0,
         help=" ".join(
             [
                 "The value used to module the next token probabilities.",
@@ -107,6 +118,7 @@ def define_argparser() -> argparse.Namespace:
         default=1,
         help=" ".join(
             [
+                "Number of generating output statements from LM using a single input."
                 "Default=%(default)s",
             ]
         ),
@@ -492,7 +504,7 @@ def main(config: argparse.Namespace) -> None:
                         calculate_similarity(
                             tokenizer, row["text"], text, is_word_level=True
                         )
-                        < 0.5
+                        < config.alpha
                         for text in top_k_text
                     ]
                 ):
@@ -520,7 +532,7 @@ def main(config: argparse.Namespace) -> None:
                         calculate_similarity(
                             tokenizer, row["text"], text, is_word_level=False
                         )
-                        < 0.5
+                        < config.alpha
                         for text in top_k_text
                     ]
                 ):

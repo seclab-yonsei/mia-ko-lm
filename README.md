@@ -203,7 +203,7 @@ Please cite below if you make use of the code. _We may modify this reference acc
   title={On Membership Inference Attacks to Generative Language Models across Language Domains},
   author={Myung Gyo Oh and Leo Hyun Park and Jaeuk Kim and Jaewoo Park and Taekyoung Kwon},
   year={2022},
-  howpublished={\url{https://github.com/cawandmilk/mia-ko-lm}},
+  howpublished={\url{https://github.com/seclab-yonsei/mia-ko-lm}},
 }
 ```
 
@@ -212,7 +212,7 @@ Please cite below if you make use of the code. _We may modify this reference acc
 ```
 MIT License
 
-Copyright (c) 2022 Myung Gyo Oh
+Copyright (c) 2022 Myung Gyo Oh and others
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

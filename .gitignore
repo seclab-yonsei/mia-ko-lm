@@ -10,6 +10,10 @@ logs/
 src/crawling.py
 src/
 run.sh
+data/
 
 compare.py
 diff.py
+transformers/
+tokenizer/
+toy-gpt2/

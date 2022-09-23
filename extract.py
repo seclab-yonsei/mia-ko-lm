@@ -17,6 +17,9 @@ from pathlib import Path
 from typing import List
 
 
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -222,11 +225,11 @@ def get_tokenizer_and_model(config: argparse.Namespace) -> tuple:
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         config.pretrained_model_name,
         revision=config.revision,
-        bos_token="[BOS]",
-        eos_token="[EOS]",
-        unk_token="[UNK]",
-        pad_token="[PAD]",
-        mask_token="[MASK]",
+        # bos_token="[BOS]",
+        # eos_token="[EOS]",
+        # unk_token="[UNK]",
+        # pad_token="[PAD]",
+        # mask_token="[MASK]",
     )
     LOGGER.debug(f"Tokenizer loaded: {config.pretrained_model_name}")
 

@@ -16,17 +16,12 @@ def define_argparser(is_continue=False):
     p.add_argument(
         "--dataset_config_name",
         type=str,
-        default="wikitext-2-raw-v1",
+        default="wikitext-103-raw-v1",
     )
     p.add_argument(
         "--get_tokenizer_by",
         type=str,
         default="gpt2",  ## gpt2-base
-    )
-    p.add_argument(
-        "--vocab_size",
-        type=int,
-        default=50_000,
     )
     p.add_argument(
         "--save_dir",
@@ -61,7 +56,7 @@ def main(config):
     old_tokenizer = transformers.AutoTokenizer.from_pretrained(config.get_tokenizer_by)
     tokenizer = old_tokenizer.train_new_from_iterator(
         training_corpus,
-        vocab_size=config.vocab_size,
+        vocab_size=old_tokenizer.vocab_size,
     )
 
     tokenizer.save_pretrained(config.save_dir)

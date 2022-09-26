@@ -17,9 +17,6 @@ from pathlib import Path
 from typing import List
 
 
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
 LOGGER = logging.getLogger(__name__)
 
 
@@ -225,11 +222,11 @@ def get_tokenizer_and_model(config: argparse.Namespace) -> tuple:
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         config.pretrained_model_name,
         revision=config.revision,
-        # bos_token="[BOS]",
-        # eos_token="[EOS]",
-        # unk_token="[UNK]",
-        # pad_token="[PAD]",
-        # mask_token="[MASK]",
+        bos_token="[BOS]",
+        eos_token="[EOS]",
+        unk_token="[UNK]",
+        pad_token="[PAD]",
+        mask_token="[MASK]",
     )
     LOGGER.debug(f"Tokenizer loaded: {config.pretrained_model_name}")
 
@@ -336,7 +333,11 @@ def calculate_zlib_entropy(sentence: str, encoding: str = "utf-8") -> int:
 
 
 def calculate_similarity(
-    tokenizer, str1: str, str2: str, n_gram: int = 3, is_word_level: bool = True
+    tokenizer,
+    str1: str,
+    str2: str,
+    n_gram: int = 3,
+    is_word_level: bool = True,
 ) -> bool:
     def _word_level_tokenization(sentence) -> list:
         return re.split(r"[\s]+|[.,!?;]", sentence)
@@ -372,7 +373,9 @@ def save_results(config: argparse.Namespace, df: pd.DataFrame) -> None:
     fname = (
         "-".join(
             [
-                config.pretrained_model_name.replace(os.path.sep, "-"),
+                config.pretrained_model_name.replace("./", "").replace(
+                    os.path.sep, "-"
+                ),
                 config.revision,
                 nowtime,
                 f"bs{config.batch_size}",

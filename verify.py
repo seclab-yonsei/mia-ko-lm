@@ -198,8 +198,6 @@ def main(config: argparse.Namespace) -> None:
     conn_refs = "▁".join([" ".join([str(i) for i in ref]) for ref in refs])
     df.loc[:, "ref"] = None
 
-    print(len(conn_refs), conn_refs[:100])
-
     for i in tqdm.tqdm(range(len(idx)), desc="Verifying"):
         hyp = np.array(tokenizer.encode(df.loc[i, "text"]))
         hyp_list = [
@@ -208,10 +206,10 @@ def main(config: argparse.Namespace) -> None:
         ]
 
         for h in hyp_list:
-            ## Find using regular expression.
-            m = re.match(h, conn_refs)
-            if m != None:
-                df.loc[i, "ref"] = refs[conn_refs[: m.start()].count("▁")]
+            sp = conn_refs.find(h)
+            if sp != -1:
+                df.loc[i, "ref"] = refs[conn_refs[:sp].count("▁")]
+                print("Hello!")
 
     ## Record.
     for i in range(1, 5, 1):

@@ -104,21 +104,6 @@ def define_argparser() -> argparse.Namespace:
     return config
 
 
-def sim(reference: list, hypothesis: list, slice_len: int = 50):
-    global tokenizer
-
-    ref_set = set(
-        " ".join([str(j) for j in reference[i : i + slice_len]])
-        for i in range(len(reference) - slice_len)
-    )
-    hyp_set = set(
-        " ".join([str(j) for j in hypothesis[i : i + slice_len]])
-        for i in range(len(hypothesis) - slice_len)
-    )
-
-    return len(ref_set & hyp_set) >= 1
-
-
 def define_logger(config: argparse.Namespace) -> None:
     log_format = "[%(asctime)s] [%(levelname)s] %(message)s"
     level = logging.DEBUG if config.debug else logging.INFO
@@ -198,7 +183,9 @@ def main(config: argparse.Namespace) -> None:
     conn_refs = "▁".join([" ".join([str(i) for i in ref]) for ref in refs])
     df.loc[:, "ref"] = None
 
-    for i in tqdm.tqdm(range(len(idx)), desc="Verifying"):
+    n = 0
+    tqdm_dataloader = tqdm.tqdm(range(len(idx)), desc="Verifying")
+    for i in tqdm_dataloader:
         hyp = np.array(tokenizer.encode(df.loc[i, "text"]))
         hyp_list = [
             " ".join([str(j) for j in hyp[k : k + config.slice_len]])
@@ -206,10 +193,29 @@ def main(config: argparse.Namespace) -> None:
         ]
 
         for h in hyp_list:
-            sp = conn_refs.find(h)
-            if sp != -1:
-                df.loc[i, "ref"] = refs[conn_refs[:sp].count("▁")]
-                print("Hello!")
+            flag = False
+
+            ## 'in' operator is much faster then 'str.find', 're.match', and ...
+            if not (h in conn_refs):
+                continue
+
+            ## If h in conn_refs,
+            step = 10_000
+            for sp in range(0, len(refs), step):
+                partial_refs = "▁".join(
+                    [" ".join([str(i) for i in ref]) for ref in refs[sp : sp + step]]
+                )
+                if h in partial_refs:
+                    ## Reford the reference string.
+                    k = partial_refs.find(h)
+                    df.loc[i, "ref"] = refs[sp + partial_refs[:k].count("▁")]
+
+                    flag = True
+                    break
+
+            if flag:
+                tqdm_dataloader.set_postfix({"find": f"{n}"})
+                break
 
     ## Record.
     for i in range(1, 5, 1):

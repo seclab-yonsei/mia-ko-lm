@@ -12,6 +12,8 @@ import tqdm
 import numpy as np
 import pandas as pd
 
+from itertools import chain
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -61,6 +63,16 @@ def define_argparser() -> argparse.Namespace:
         help=" ".join(
             [
                 "The specific model version to use.",
+                "Default=%(default)s",
+            ]
+        ),
+    )
+    p.add_argument(
+        "--block_size",
+        type=int,
+        default=1024,
+        help=" ".join(
+            [
                 "Default=%(default)s",
             ]
         ),
@@ -135,9 +147,38 @@ def main(config: argparse.Namespace) -> None:
     LOGGER.debug(f"Tokenizer loaded: {config.pretrained_model_name}")
 
     ## Tokenize all.
-    ## 30GB or more of memory is required.
     refs = tokenizer(raw_datasets["train"]["text"])["input_ids"]
-    refs = [i for i in refs if len(i) >= config.slice_len]
+    refs = [i for i in refs if len(i) != 0]
+
+    # def tokenize_function(examples):
+    #     output = tokenizer(examples["text"])
+    #     return output
+
+    # tokenized_datasets = raw_datasets.map(tokenize_function, batched=True)
+
+    # ## Concatenate all like for training.
+    # ## See: https://github.com/huggingface/transformers/blob/main/examples/pytorch/language-modeling/run_clm.py#L441-L455
+    # def group_texts(examples, block_size: int = config.block_size):
+    #     ## Concatenate all texts.
+    #     concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
+    #     total_length = len(concatenated_examples[list(examples.keys())[0]])
+    #     # We drop the small remainder, we could add padding if the model supported it instead of this drop, you can
+    #     # customize this part to your needs.
+    #     if total_length >= block_size:
+    #         total_length = (total_length // block_size) * block_size
+    #     # Split by chunks of max_len.
+    #     result = {
+    #         k: [t[i : i + block_size] for i in range(0, total_length, block_size)]
+    #         for k, t in concatenated_examples.items()
+    #     }
+    #     result["labels"] = result["input_ids"].copy()
+    #     return result
+
+    # lm_datasets = tokenized_datasets.map(group_texts, batched=True)
+
+    # ## List of every chunks sized with 'config.block_size' (e.g., 256).
+    # lm_tr_ds = lm_datasets["train"]["input_ids"]
+    # conn_refs = " ".join([" ".join([str(i) for i in ref]) for ref in lm_tr_ds]).strip()
     LOGGER.debug(f"All dataset tokenized")
 
     ## Filter the choosen texts.
@@ -180,7 +221,10 @@ def main(config: argparse.Namespace) -> None:
     """
 
     ## Fast method: connect all reference at once and compare only one time.
-    conn_refs = "▁".join([" ".join([str(i) for i in ref]) for ref in refs])
+    conn_refs = list(itertools.chain.from_iterable(refs))
+    conn_refs = " ".join(list(map(str, conn_refs)))  ## convert integer to string
+
+    # conn_refs = " ".join([" ".join([str(i) for i in ref]) for ref in refs])
     df.loc[:, "ref"] = None
 
     n = 0
@@ -195,27 +239,40 @@ def main(config: argparse.Namespace) -> None:
         for h in hyp_list:
             flag = False
 
-            ## 'in' operator is much faster then 'str.find', 're.match', and ...
+            ## 'in' operator is much faster then 'str.find', 're.match', or sth ...
             if not (h in conn_refs):
                 continue
+            else:
+                df.loc[i, "ref"] = True
+                n += 1
 
-            ## If h in conn_refs,
-            step = 10_000
-            for sp in range(0, len(refs), step):
-                partial_refs = "▁".join(
-                    [" ".join([str(i) for i in ref]) for ref in refs[sp : sp + step]]
-                )
-                if h in partial_refs:
-                    ## Reford the reference string.
-                    k = partial_refs.find(h)
-                    df.loc[i, "ref"] = refs[sp + partial_refs[:k].count("▁")]
-
-                    flag = True
-                    break
-
-            if flag:
-                tqdm_dataloader.set_postfix({"find": f"{n}"})
                 break
+
+        tqdm_dataloader.set_postfix({"find": f"{n}"})
+
+    # ## If h in conn_refs, search step by step.
+    # ## You can optimize it by using quick sort or sth...
+    # step = 10_000
+    # for j in range(0, len(refs), step):
+    #     partial_refs = list(itertools.chain.from_iterable(refs[j : j + step]))
+    #     partial_refs = " ".join(list(map(str, partial_refs)))
+
+    #     # partial_refs = "▁".join(
+    #     #     [" ".join([str(i) for i in ref]) for ref in refs[sp : sp + step]]
+    #     # )
+    #     if h in partial_refs:
+    #         ## Reford the reference string.
+    #         sp = partial_refs.find(h) + j
+    #         margin = int(len(h) * 0.5)
+    #         df.loc[i, "ref"] = conn_refs[sp - margin : sp + len(h) + margin]
+    #         # df.loc[i, "ref"] = refs[sp + partial_refs[:k].count("▁")]
+
+    #         flag = True
+    #         break
+
+    # if flag:
+    #     tqdm_dataloader.set_postfix({"find": f"{n}"})
+    #     break
 
     ## Record.
     for i in range(1, 5, 1):

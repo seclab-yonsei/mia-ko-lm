@@ -416,25 +416,31 @@ def main(config: argparse.Namespace) -> None:
     )
     texts = []
     with tqdm.tqdm(total=config.n, desc="Generating Texts") as pbar:
-        for i in range(num_iters):
+        while True:
             ## Generate sentences with one batch.
             prompt = tokenizer.eos_token
             generated = generate(config, tokenizer, model, prompt=prompt)
 
             ## Sometimes, generated texts can be empty so that calculating ppl may cause exception.
-            generated = [i for i in generated if i != ""]
+            generated = [i for i in generated if i.strip() != ""]
 
             ## Drop last if need.
-            if i == num_iters - 1:
-                generated = generated[
-                    : config.n - i * config.batch_size * config.num_return_sequences
-                ]
+            # if i == num_iters - 1:
+            #     generated = generated[
+            #         : config.n - i * config.batch_size * config.num_return_sequences
+            #     ]
+
+            if len(texts) + len(generated) > config.n:
+                generated = generated[: config.n - len(texts)]
 
             ## Gather it.
             texts.extend(generated)
 
             ## Update progressbar.
             pbar.update(len(generated))
+
+            if len(texts) >= config.n:
+                break
 
     ## Drop remainers..
     texts = texts[: config.n]
@@ -489,66 +495,66 @@ def main(config: argparse.Namespace) -> None:
     df.loc[:, "score3"] = np.log(df.loc[:, "ppl_lower"]) / np.log(df.loc[:, "ppl"])
     df.loc[:, "score4"] = -np.log(df.loc[:, "sliding_window"])
 
-    ## De-duplicating.
-    for column in [f"score{i}" for i in range(1, 5, 1)]:
-        ## First, we sort values.
-        df = df.sort_values(by=column, ascending=False).reset_index(drop=True)
+    # ## De-duplicating.
+    # for column in [f"score{i}" for i in range(1, 5, 1)]:
+    #     ## First, we sort values.
+    #     df = df.sort_values(by=column, ascending=False).reset_index(drop=True)
 
-        ## Word-level similarity.
-        top_k_text = []
-        top_k_idx = []
+    #     ## Word-level similarity.
+    #     top_k_text = []
+    #     top_k_idx = []
 
-        with tqdm.tqdm(desc=f"De-duplicating (by={column})", total=config.k) as pbar:
-            for idx, row in df.iterrows():
-                ## We only want top-k sentences.
-                if len(top_k_text) >= config.k:
-                    break
+    #     with tqdm.tqdm(desc=f"De-duplicating (by={column})", total=config.k) as pbar:
+    #         for idx, row in df.iterrows():
+    #             ## We only want top-k sentences.
+    #             if len(top_k_text) >= config.k:
+    #                 break
 
-                ## Big O complexity: O(n(n-1)/2) where n is k.
-                if all(
-                    [
-                        calculate_similarity(
-                            tokenizer, row["text"], text, is_word_level=True
-                        )
-                        < config.alpha
-                        for text in top_k_text
-                    ]
-                ):
-                    top_k_text.append(row["text"])  ## save for comparison
-                    top_k_idx.append(idx)  ## save for marking
+    #             ## Big O complexity: O(n(n-1)/2) where n is k.
+    #             if all(
+    #                 [
+    #                     calculate_similarity(
+    #                         tokenizer, row["text"], text, is_word_level=True
+    #                     )
+    #                     < config.alpha
+    #                     for text in top_k_text
+    #                 ]
+    #             ):
+    #                 top_k_text.append(row["text"])  ## save for comparison
+    #                 top_k_idx.append(idx)  ## save for marking
 
-                    ## Update probress bar.
-                    pbar.update(1)
+    #                 ## Update probress bar.
+    #                 pbar.update(1)
 
-        df.loc[top_k_idx, f"{column}_top_k"] = np.arange(config.k)
+    #     df.loc[top_k_idx, f"{column}_top_k"] = np.arange(config.k)
 
-        ## BPE token-level similarity.
-        top_k_text = []
-        top_k_idx = []
+    #     ## BPE token-level similarity.
+    #     top_k_text = []
+    #     top_k_idx = []
 
-        with tqdm.tqdm(desc=f"De-duplicating (by={column})", total=config.k) as pbar:
-            for idx, row in df.iterrows():
-                ## We only want top-k sentences.
-                if len(top_k_text) >= config.k:
-                    break
+    #     with tqdm.tqdm(desc=f"De-duplicating (by={column})", total=config.k) as pbar:
+    #         for idx, row in df.iterrows():
+    #             ## We only want top-k sentences.
+    #             if len(top_k_text) >= config.k:
+    #                 break
 
-                ## Big O complexity: O(n(n-1)/2) where n is k.
-                if all(
-                    [
-                        calculate_similarity(
-                            tokenizer, row["text"], text, is_word_level=False
-                        )
-                        < config.alpha
-                        for text in top_k_text
-                    ]
-                ):
-                    top_k_text.append(row["text"])  ## save for comparison
-                    top_k_idx.append(idx)  ## save for marking
+    #             ## Big O complexity: O(n(n-1)/2) where n is k.
+    #             if all(
+    #                 [
+    #                     calculate_similarity(
+    #                         tokenizer, row["text"], text, is_word_level=False
+    #                     )
+    #                     < config.alpha
+    #                     for text in top_k_text
+    #                 ]
+    #             ):
+    #                 top_k_text.append(row["text"])  ## save for comparison
+    #                 top_k_idx.append(idx)  ## save for marking
 
-                    ## Update probress bar.
-                    pbar.update(1)
+    #                 ## Update probress bar.
+    #                 pbar.update(1)
 
-        df.loc[top_k_idx, f"{column}_top_k_bpe"] = np.arange(config.k)
+    #     df.loc[top_k_idx, f"{column}_top_k_bpe"] = np.arange(config.k)
 
     ## Save.
     save_results(config, df)

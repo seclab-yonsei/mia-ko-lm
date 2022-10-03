@@ -1,17 +1,10 @@
 import datasets
 import transformers
 
-import tokenizers
-
-from tokenizers.models import BPE
-from tokenizers.normalizers import Sequence, BertNormalizer
-from tokenizers.pre_tokenizers import ByteLevel
-from tokenizers.trainers import BpeTrainer
-
 import argparse
 import pprint
 
-from pathlib import Path
+from typing import List
 
 
 def define_argparser():
@@ -57,8 +50,8 @@ def define_argparser():
     return config
 
 
-def main(config):
-    def print_config(config):
+def main(config: argparse.Namespace) -> None:
+    def print_config(config: argparse.Namespace):
         pprint.PrettyPrinter(indent=4, sort_dicts=False).pprint(vars(config))
 
     print_config(config)
@@ -71,7 +64,7 @@ def main(config):
     )
 
     ## Train the tokenizer with only train dataset.
-    def batch_iterator(batch_size: int = 10_000):
+    def batch_iterator(batch_size: int = 10_000) -> List[str]:
         for i in range(0, len(raw_datasets["train"]["text"]), batch_size):
             yield raw_datasets["train"]["text"][i : i + batch_size]
 

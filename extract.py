@@ -354,8 +354,12 @@ def calculate_similarity(
 
     ## Calculate trigram similarity: str1 (reference) vs str2 (hyphothesis).
     ## It is same as "Is string 1 is similar with string 2?"
+
+    ## Occasionally, if the Text consists of 1 or 2 words, the trigram multiset
+    ## will result in an empty list, resulting in a divided by zero error.
+    ## To prevent this, we guarantee that the trigram multiset has at least one element.
     n_gram_set = lambda x: [
-        set(j for j in x[i : i + n_gram]) for i in range(len(x) - n_gram)
+        sorted([j for j in x[i : i + n_gram]]) for i in range(max(len(x) - n_gram, 1))
     ]
 
     s1 = n_gram_set(str1)
@@ -411,9 +415,6 @@ def main(config: argparse.Namespace) -> None:
     _ = model.eval()
 
     ## Now, generate a lot of texts.
-    num_iters = int(
-        np.ceil(config.n / (config.batch_size * config.num_return_sequences))
-    )
     texts = []
     with tqdm.tqdm(total=config.n, desc="Generating Texts") as pbar:
         while True:
@@ -424,12 +425,7 @@ def main(config: argparse.Namespace) -> None:
             ## Sometimes, generated texts can be empty so that calculating ppl may cause exception.
             generated = [i for i in generated if i.strip() != ""]
 
-            ## Drop last if need.
-            # if i == num_iters - 1:
-            #     generated = generated[
-            #         : config.n - i * config.batch_size * config.num_return_sequences
-            #     ]
-
+            ## Truncate if we create more than the desired numbers.
             if len(texts) + len(generated) > config.n:
                 generated = generated[: config.n - len(texts)]
 
@@ -495,66 +491,70 @@ def main(config: argparse.Namespace) -> None:
     df.loc[:, "score3"] = np.log(df.loc[:, "ppl_lower"]) / np.log(df.loc[:, "ppl"])
     df.loc[:, "score4"] = -np.log(df.loc[:, "sliding_window"])
 
-    # ## De-duplicating.
-    # for column in [f"score{i}" for i in range(1, 5, 1)]:
-    #     ## First, we sort values.
-    #     df = df.sort_values(by=column, ascending=False).reset_index(drop=True)
+    ## ===== =====
+    save_path = "assets/toy-gpt2-1024-main-20221002-230200-bs256-rs1-n100000-k100.csv"
+    df = pd.read_csv(save_path, encoding="utf-8")
 
-    #     ## Word-level similarity.
-    #     top_k_text = []
-    #     top_k_idx = []
+    ## De-duplicating.
+    for column in [f"score{i}" for i in range(1, 5, 1)]:
+        ## First, we sort values.
+        df = df.sort_values(by=column, ascending=False).reset_index(drop=True)
 
-    #     with tqdm.tqdm(desc=f"De-duplicating (by={column})", total=config.k) as pbar:
-    #         for idx, row in df.iterrows():
-    #             ## We only want top-k sentences.
-    #             if len(top_k_text) >= config.k:
-    #                 break
+        ## Word-level similarity.
+        top_k_text = []
+        top_k_idx = []
 
-    #             ## Big O complexity: O(n(n-1)/2) where n is k.
-    #             if all(
-    #                 [
-    #                     calculate_similarity(
-    #                         tokenizer, row["text"], text, is_word_level=True
-    #                     )
-    #                     < config.alpha
-    #                     for text in top_k_text
-    #                 ]
-    #             ):
-    #                 top_k_text.append(row["text"])  ## save for comparison
-    #                 top_k_idx.append(idx)  ## save for marking
+        with tqdm.tqdm(desc=f"De-duplicating (by={column})", total=config.k) as pbar:
+            for idx, row in df.iterrows():
+                ## We only want top-k sentences.
+                if len(top_k_text) >= config.k:
+                    break
 
-    #                 ## Update probress bar.
-    #                 pbar.update(1)
+                ## Big O complexity: O(n(n-1)/2) where n is k.
+                if all(
+                    [
+                        calculate_similarity(
+                            tokenizer, row["text"], text, is_word_level=True
+                        )
+                        < config.alpha
+                        for text in top_k_text
+                    ]
+                ):
+                    top_k_text.append(row["text"])  ## save for comparison
+                    top_k_idx.append(idx)  ## save for marking
 
-    #     df.loc[top_k_idx, f"{column}_top_k"] = np.arange(config.k)
+                    ## Update probress bar.
+                    pbar.update(1)
 
-    #     ## BPE token-level similarity.
-    #     top_k_text = []
-    #     top_k_idx = []
+        df.loc[top_k_idx, f"{column}_top_k"] = np.arange(config.k)
 
-    #     with tqdm.tqdm(desc=f"De-duplicating (by={column})", total=config.k) as pbar:
-    #         for idx, row in df.iterrows():
-    #             ## We only want top-k sentences.
-    #             if len(top_k_text) >= config.k:
-    #                 break
+        ## BPE token-level similarity.
+        top_k_text = []
+        top_k_idx = []
 
-    #             ## Big O complexity: O(n(n-1)/2) where n is k.
-    #             if all(
-    #                 [
-    #                     calculate_similarity(
-    #                         tokenizer, row["text"], text, is_word_level=False
-    #                     )
-    #                     < config.alpha
-    #                     for text in top_k_text
-    #                 ]
-    #             ):
-    #                 top_k_text.append(row["text"])  ## save for comparison
-    #                 top_k_idx.append(idx)  ## save for marking
+        with tqdm.tqdm(desc=f"De-duplicating (by={column})", total=config.k) as pbar:
+            for idx, row in df.iterrows():
+                ## We only want top-k sentences.
+                if len(top_k_text) >= config.k:
+                    break
 
-    #                 ## Update probress bar.
-    #                 pbar.update(1)
+                ## Big O complexity: O(n(n-1)/2) where n is k.
+                if all(
+                    [
+                        calculate_similarity(
+                            tokenizer, row["text"], text, is_word_level=False
+                        )
+                        < config.alpha
+                        for text in top_k_text
+                    ]
+                ):
+                    top_k_text.append(row["text"])  ## save for comparison
+                    top_k_idx.append(idx)  ## save for marking
 
-    #     df.loc[top_k_idx, f"{column}_top_k_bpe"] = np.arange(config.k)
+                    ## Update probress bar.
+                    pbar.update(1)
+
+        df.loc[top_k_idx, f"{column}_top_k_bpe"] = np.arange(config.k)
 
     ## Save.
     save_results(config, df)

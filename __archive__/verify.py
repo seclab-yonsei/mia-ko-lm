@@ -191,10 +191,12 @@ def main(config: argparse.Namespace) -> None:
     tqdm_dataloader = tqdm.tqdm(range(len(idx)), desc="Verifying")
     for i in tqdm_dataloader:
         hyp = np.array(tokenizer.encode(df.loc[i, "text"]))
-        hyp_list = [
-            " ".join([str(j) for j in hyp[k : k + config.slice_len]])
-            for k in range(len(hyp) - config.slice_len)
-        ]
+        hyp_list = np.unique(
+            [
+                " ".join([str(j) for j in hyp[k : k + config.slice_len]])
+                for k in range(len(hyp) - config.slice_len)
+            ]
+        )
 
         for h in hyp_list:
             ## Complexity of "in" operator: O(n)

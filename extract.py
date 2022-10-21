@@ -222,11 +222,11 @@ def get_tokenizer_and_model(config: argparse.Namespace) -> tuple:
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         config.pretrained_model_name,
         revision=config.revision,
-        # bos_token="[BOS]",
-        # eos_token="[EOS]",
-        # unk_token="[UNK]",
-        # pad_token="[PAD]",
-        # mask_token="[MASK]",
+        bos_token="[BOS]",
+        eos_token="[EOS]",
+        unk_token="[UNK]",
+        pad_token="[PAD]",
+        mask_token="[MASK]",
     )
     LOGGER.debug(f"Tokenizer loaded: {config.pretrained_model_name}")
 
@@ -261,7 +261,7 @@ def generate(config: argparse.Namespace, tokenizer, model, prompt: str) -> List[
         gen_tokens = model.generate(
             tokens,
             do_sample=True,
-            # temperature=config.temperature,  ## 0.8
+            temperature=config.temperature,  ## 1.0
             repetition_penalty=config.repetition_penalty,  ## 1.0 -> hence we are using zlib entropy metric, this is no meaning
             min_length=config.min_length + prompt_len,
             max_length=config.max_length + prompt_len,
@@ -279,7 +279,10 @@ def generate(config: argparse.Namespace, tokenizer, model, prompt: str) -> List[
 
 
 def calcualte_perplexity(
-    config: argparse.Namespace, tokenizer, model, text: str
+    config: argparse.Namespace,
+    tokenizer,
+    model,
+    text: str,
 ) -> float:
     ## input_ids == target_ids.
     input_ids = torch.tensor(tokenizer.encode(text)).unsqueeze(0)
@@ -325,7 +328,8 @@ def calcualte_window_perplexity(
         ppl = float(torch.exp(loss).cpu().detach().numpy())
         ppls.append(ppl)
 
-    return min(ppls)
+    ## List "ppls" might be empty because of the full punctuations.
+    return np.inf if ppls == [] else min(ppls)
 
 
 def calculate_zlib_entropy(sentence: str, encoding: str = "utf-8") -> int:
@@ -490,10 +494,6 @@ def main(config: argparse.Namespace) -> None:
     df.loc[:, "score2"] = df.loc[:, "zlib_entropy"] / np.log(df.loc[:, "ppl"])
     df.loc[:, "score3"] = np.log(df.loc[:, "ppl_lower"]) / np.log(df.loc[:, "ppl"])
     df.loc[:, "score4"] = -np.log(df.loc[:, "sliding_window"])
-
-    ## ===== =====
-    save_path = "assets/toy-gpt2-1024-main-20221002-230200-bs256-rs1-n100000-k100.csv"
-    df = pd.read_csv(save_path, encoding="utf-8")
 
     ## De-duplicating.
     for column in [f"score{i}" for i in range(1, 5, 1)]:

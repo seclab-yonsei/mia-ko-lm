@@ -59,11 +59,12 @@ For a more detailed description of the parameters, see [here](./assets/help.txt)
 
 We generated 100,000 samples by performing membership inference on Korean-based GPT \[1\]. Afterward, we selected top-100 potential candidate samples based on four metrics (`PPL`, `zlib`, `Lowercase`, and `Window`) and manually searched them using Google. The experimental results are as follows:
 
-| Target System    | Author                 |  `PPL` | `zlib` | `Lowercase` | `Window` |
-| :--------------- | :--------------------- | -----: | -----: | ----------: | -------: |
-| GPT-2 (XL) \[3\] | Carlini _et al._ \[2\] |      9 |     59 |      **53** |       33 |
-| KoGPT \[1\]      | Ours                   | **89** | **90** |          20 |   **52** |
-| **Difference**   | -                      |    ↑80 |    ↑31 |         ↓33 |      ↑19 |
+| Target System    | Author                 | Tokenization |  `PPL` | `zlib` | `Lowercase` | `Window` |
+| :--------------- | :--------------------- | :----------- | -----: | -----: | ----------: | -------: |
+| GPT-2 (XL) \[3\] | Carlini _et al._ \[2\] | Word-level   |      9 |     59 |      **53** |       33 |
+| KoGPT \[1\]      | Ours                   | Word-level   |     89 |     90 |          20 |       52 |
+| KoGPT \[1\]      | Ours                   | BPE          | **91** | **91** |          18 |   **59** |
+| **Difference**   | -                      | -            |    ↑82 |    ↑32 |         ↓35 |      ↑26 |
 
 Although we detected more redundant samples than in the previous work, it is premature to conclude that the `KoGPT` is vulnerable. Thus, our target system is 4.0× larger than Carlini _et al._'s work \[2\].
 

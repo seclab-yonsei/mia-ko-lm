@@ -203,14 +203,29 @@ Here are some of the top-_k_ samples we found for each metric:
 
 ## Citation
 
-Please cite below if you make use of the code. _We may modify this reference according to the confirmation of the pre-proceedings version_.
+Please cite below if you make use of the code.
 
 ```Latex
-@misc{oh2022on,
-  title={On Membership Inference Attacks to Generative Language Models across Language Domains},
-  author={Myung Gyo Oh and Leo Hyun Park and Jaeuk Kim and Jaewoo Park and Taekyoung Kwon},
-  year={2022},
-  howpublished={\url{https://github.com/seclab-yonsei/mia-ko-lm}},
+@inproceedings{oh2023membership,
+  title={On Membership Inference Attacks to Generative Language Models Across Language Domains},
+  author={Oh, Myung Gyo and Park, Leo Hyun and Kim, Jaeuk and Park, Jaewoo and Kwon, Taekyoung},
+  booktitle={Information Security Applications: 23rd International Conference, WISA 2022, Jeju Island, South Korea, August 24--26, 2022, Revised Selected Papers},
+  pages={143--155},
+  year={2023},
+  organization={Springer}
+}
+```
+
+```Latex
+@article{oh2023membership,
+  title={Membership Inference Attacks with Token-Level Deduplication on Korean Language Models},
+  author={Oh, Myung Gyo and Park, Leo Hyun and Kim, Jaeuk and Park, Jaewoo and Kwon, Taekyoung},
+  journal={IEEE Access},
+  year={2023},
+  volume={11},
+  number={},
+  pages={10207-10217},
+  doi={10.1109/ACCESS.2023.3239668}}
 }
 ```
 
